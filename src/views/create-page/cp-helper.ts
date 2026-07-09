@@ -16,18 +16,18 @@ const _showErr = () => {
   })
 }
 
-const _showQueryErr = async (router: PtRouter) => {
+const _showQueryErr = async (router: PtRouter, fallbackName: "index" | "create" = "index") => {
   await cui.showModal({
     title: "创建房间失败",
     content: "不妨手动黏贴单集链接以创建房间",
     showCancel: false,
   })
-  router.replace({ name: "create" })
+  router.replace({ name: fallbackName })
 }
 
 const _createRoom = async (
-  roomData: ContentData, 
-  router: PtRouter, 
+  roomData: ContentData | undefined,
+  router: PtRouter,
   route: VueRoute,
   fromQuery: boolean = false,
 ): Promise<void> => {
@@ -87,15 +87,15 @@ const getTargetLink = (route: VueRoute): string => {
   return link
 }
 
-const useLinkFromQuery = async (router: PtRouter, route: VueRoute) => {
+const useLinkFromQuery = async (router: PtRouter, route: VueRoute, fallbackName: "index" | "create" = "index") => {
   const link = getTargetLink(route)
   if(!link) {
-    _showQueryErr(router)
+    _showQueryErr(router, fallbackName)
     return
   }
   const res = await request_parse(link)
   if(res?.code !== "0000") {
-    _showQueryErr(router)
+    _showQueryErr(router, fallbackName)
     return
   }
 
@@ -103,7 +103,18 @@ const useLinkFromQuery = async (router: PtRouter, route: VueRoute) => {
   _createRoom(contentData, router, route, true)
 }
 
+// 创建一个无播客的纯专注房间（直接进 Study Mode）
+const createFocusRoom = async (router: PtRouter, route: VueRoute): Promise<void> => {
+  const now = time.getTime()
+  if(lastIntoFinishInput + 500 > now) return
+  lastIntoFinishInput = now
+
+  cui.showLoading({ title: "创建中.." })
+  await _createRoom(undefined, router, route)
+}
+
 export default {
   finishInput,
   useLinkFromQuery,
+  createFocusRoom,
 }

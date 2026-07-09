@@ -6,7 +6,6 @@ import {
   RouteLocationNormalized,
 } from "vue-router"
 
-import CreatePage from "../views/create-page/create-page.vue"
 import IndexPage from "../views/index-page/index-page.vue"
 import JoinPage from "../views/join-page/join-page.vue"
 import RoomPage from "../views/room-page/room-page.vue"
@@ -46,11 +45,8 @@ const routes: Array<RouteRecordRaw> = [
   },
   {
     path: "/create",
-    component: CreatePage,
     name: "create",
-    meta: {
-      keepAlive: true,
-    },
+    redirect: to => ({ name: "index", query: to.query }),
   },
   {
     path: "/join",

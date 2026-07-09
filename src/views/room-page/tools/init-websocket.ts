@@ -8,10 +8,23 @@ interface WsCallbacks {
   onerror?: (res: Event) => void
 }
 
-export function initWebSocket(callbacks: WsCallbacks) {
+export function initWebSocket(callbacks: WsCallbacks, roomId?: string) {
   const _env = util.getEnv()
   const { WEBSOCKET_URL } = _env
-  let ws = new WebSocket(WEBSOCKET_URL)
+  // Support a relative WS path (e.g. "/pt-api/ws") for same-origin dev proxying,
+  // as well as an absolute wss:// URL in production.
+  let base = WEBSOCKET_URL
+  if(base.startsWith("/")) {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:"
+    base = `${proto}//${location.host}${base}`
+  }
+  // roomId is carried in the URL so the backend can route to the room's
+  // Durable Object at connection time (before the FIRST_SEND message).
+  let url = base
+  if(roomId) {
+    url += (base.includes("?") ? "&" : "?") + "roomId=" + encodeURIComponent(roomId)
+  }
+  let ws = new WebSocket(url)
   ws.onopen = (socket: Event) => {
     console.log("ws opened.........")
     console.log(socket)

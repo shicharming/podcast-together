@@ -40,11 +40,12 @@ const onTapBtn = (e: Event) => {
   height: 50px;
   line-height: 50px;
   border: 0;
-  border-radius: 50px;
+  border-radius: 8px;
   background-color: var(--main-btn-bg);
   color: var(--main-btn-text);
   cursor: pointer;
   font-size: var(--btn-font);
+  font-weight: 700;
   transition: .15s;
 }
 

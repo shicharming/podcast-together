@@ -18,6 +18,10 @@ export const showParticipants = (participants: Participant[], myGuestId: string)
       nickName: v.nickName,
       enterStr: "",
       isMe: v.guestId === myGuestId,
+      heartbeatStamp: v.heartbeatStamp,
+      clientState: v.clientState,
+      lastActiveStamp: v.lastActiveStamp,
+      lastVisibleStamp: v.lastVisibleStamp,
     }
     const diff = now - v.enterStamp
     const sec = diff / 1000

@@ -1,24 +1,20 @@
-import images from "../../../images"
-import { ContentData } from "../../../type"
-import { ShareCfgData } from "../../../type/type-share"
 import share from "../../../utils/share"
+import { ContentData } from "../../../type"
 
 export const shareData = (c: ContentData, playStatus: string, nickName: string) => {
-  let frdTitle = c.seriesName ? `${nickName} 邀请你一起听《${c.seriesName}》` : `${nickName} 邀请你一起听播客`
-  let pyqTitle = c.title ? `${nickName} 邀请你一起听 ${c.title}` : `${nickName} 邀请你一起听播客`
-  let desc = c.title ? c.title : "一起听播客"
-
-  let opt: ShareCfgData = {
-    title: frdTitle,
+  const frdTitle = c.seriesName ? `${nickName} 邀请你加入《${c.seriesName}》同步收听` : `${nickName} 邀请你加入同步收听房间`
+  const pyqTitle = c.title ? `${nickName} 邀请你同步收听 ${c.title}` : `${nickName} 邀请你加入同步收听房间`
+  const desc = c.title ? c.title : "打开链接即可进入同步收听房间。"
+  share.configShare({
+    title: c.title || "Sunny Together",
     desc,
-    imageUrl: images.APP_LOGO_COS,
-    shareWay: "outside",
+    imageUrl: c.imageUrl,
     wxShare: {
       frdTitle,
       frdDesc: desc,
       pyqTitle,
-      link: location.href,
+      frdImgUrl: c.imageUrl,
+      pyqImgUrl: c.imageUrl,
     }
-  }
-  share.configShare(opt)
+  })
 }

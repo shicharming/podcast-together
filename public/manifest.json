@@ -2,11 +2,11 @@
   "scope": "/",
   "display": "standalone",
   "start_url": "/",
-  "name": "\u4e00\u8d77\u542c\u64ad\u5ba2",
-  "short_name": "\u4e00\u8d77\u542c\u64ad\u5ba2",
-  "description": "一起跟好友听播客吧！",
-  "theme_color": "#282828",
-  "background_color": "#181818",
+  "name": "Sunny Together",
+  "short_name": "Sunny",
+  "description": "远程同步收听空间，适合播客共听、节目试播和远程复盘。",
+  "theme_color": "#17212b",
+  "background_color": "#101820",
   "orientation": "any",
   "related_applications": [],
   "prefer_related_applications": false,
@@ -35,7 +35,6 @@
       "type": "image/png",
       "purpose": "maskable"
     },
-    
     {
       "src": "pwa/android-chrome-512x512.png",
       "sizes": "512x512",
@@ -51,7 +50,7 @@
   ],
   "lang": "zh-CN",
   "share_target": {
-    "action": "/create",
+    "action": "/",
     "method": "GET",
     "params": {
       "title": "title",
@@ -61,27 +60,27 @@
   },
   "features": [
     "Podcast",
-    "listening together",
-    "realtime",
-    "simple"
+    "remote listening",
+    "realtime sync",
+    "collaboration"
   ],
   "categories": [
-    "utility",
+    "productivity",
     "music"
   ],
   "shortcuts": [
     {
       "name": "创建房间",
       "short_name": "创建",
-      "url": "/create",
-      "description":"创建新房间",
+      "url": "/",
+      "description": "创建新的同步收听房间",
       "icons": [{ "src": "pwa/ic_add.png", "sizes": "96x96" }]
     },
     {
-      "name": "联系开发者",
+      "name": "商务联系",
       "short_name": "联系",
       "url": "/contact",
-      "description": "立即加群，一起听播客！",
+      "description": "联系项目维护者",
       "icons": [{ "src": "pwa/ic_phone.png", "sizes": "96x96" }]
     }
   ],

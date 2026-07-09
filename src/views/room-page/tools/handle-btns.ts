@@ -6,9 +6,9 @@ import ptApi from "../../../utils/pt-api"
 import { enterRoom } from "./useRoomPage"
 
 export function initBtns(
-  state: Ref<PageState>, 
+  state: Ref<PageState>,
   pageData: PageData,
-  toHome: () => void, 
+  toHome: () => void,
   toContact: () => void,
   toEditMyName: (newName: string) => void,
 ) {
@@ -16,14 +16,14 @@ export function initBtns(
   const btnText = computed(() => {
     const v = state.value
     if(v < 11) return ""
-    if (v === 11 || v === 12 || v === 14 || v === 15) return "回首页"
-    if (v === 13 || v === 16 || v === 17 || v === 18 || v === 19) return "重新进入"
+    if(v === 11 || v === 12 || v === 14 || v === 15) return "回到首页"
+    if(v === 13 || v === 16 || v === 17 || v === 18 || v === 19) return "重新进入"
     return "重新尝试"
   })
 
   const btnText2 = computed(() => {
     const v = state.value
-    if (v === 13 || v === 18 || v === 19 || v === 20) return "联系开发者"
+    if (v === 13 || v === 18 || v === 19 || v === 20) return "联系支持"
     return ""
   })
 
@@ -31,34 +31,32 @@ export function initBtns(
     const v = state.value
     if(v <= 10) return ""
     if(v === 11) return "链接已过期"
-    if(v === 12) return "查无该房间"
+    if(v === 12) return "查无此房间"
     if(v === 13) return "网络不佳"
     if(v === 14) return "拒绝访问"
     if(v === 15) return "房间人数已满"
     if(v === 16) return "长时间未操作"
-    if(v === 17) return "房门外"
+    if(v === 17) return "已离开房间"
     if(v === 18) return "连接异常"
-    if(v === 19) return "未知的异常"
-    return "未知的错误"
+    if(v === 19) return "未知异常"
+    return "未知错误"
   })
 
   const pText = computed(() => {
     const v = state.value
-
-    const p1 = `请检查网络状态；\n如果重新尝试仍无改善，请联系开发者。`
-    const p2 = `已超过 5 分钟闲置；\n你似乎游走到房门外啦！`
-    const p3 = `你的连接似乎已断开`
-    const p4 = `开发者也遇到过这问题，目前没有解法555；我之前试过关闭浏览器重新打开，你可以试试看。`
+    const network = `请检查网络状态；\n如果重新尝试仍无改善，请联系支持。`
+    const idle = `已超过 5 分钟未操作。\n请重新进入房间。`
+    const disconnected = `你的连接似乎已断开。`
+    const unknown = `当前浏览器连接状态异常，建议关闭页面后重新打开。`
 
     if(v <= 10) return ""
-    if(v === 13 || v === 20) return p1
-    if(v === 17) return p2
-    if(v === 18) return p3
-    if(v === 19) return p4
+    if(v === 13 || v === 20) return network
+    if(v === 17) return idle
+    if(v === 18) return disconnected
+    if(v === 19) return unknown
     return ""
   })
 
-  // 点击异常情况下的按钮
   const onTapBtn = () => {
     const s = state.value
     if (s === 11 || s === 12 || s === 14 || s === 15) {
@@ -73,11 +71,10 @@ export function initBtns(
     toContact()
   }
 
-  // 主动点击离开
   const onTapLeave = async () => {
     const res = await cui.showModal({
-      title: "离开",
-      content: "确定要离开吗？"
+      title: "离开房间",
+      content: "确定要离开当前收听房间吗？"
     })
     if(res.confirm) {
       toHome()
@@ -87,20 +84,18 @@ export function initBtns(
   const getShareData = (): ShareData => {
     const c = pageData.content
     const url = location.href
-    let shareData: ShareData = {
-      title: c?.seriesName ? `邀请你一起听《${c.seriesName}》` : `邀请你一起听播客`,
-      text: c?.title ? c.title : `实时在线一起听！`,
+    return {
+      title: c?.seriesName ? `邀请你加入《${c.seriesName}》同步收听` : "邀请你加入同步收听房间",
+      text: c?.title ? c.title : "打开链接即可进入同步收听房间。",
       url,
     }
-    return shareData
   }
 
-  // 点击分享
   const onTapShare = () => {
     const cha = ptApi.getCharacteristic()
     const v = displayMode.value
-
     const shareData = getShareData()
+
     if(ptApi.canShare(shareData)) {
       ptApi.share(shareData)
       return
@@ -110,15 +105,15 @@ export function initBtns(
       const url = location.href
       ptApi.copyToClipboard(url)
       cui.showModal({
-        title: "已复制链接到剪贴板",
-        content: "快去跟好友们分享吧！",
+        title: "房间链接已复制",
+        content: "可以发送给需要加入同步收听的人。",
         showCancel: false
       })
       return
     }
     cui.showModal({
-      title: "分享",
-      content: "请使用 APP 自带的分享功能，通常存在于「...」更多按钮或者带箭头↗️的分享按钮中。",
+      title: "分享房间",
+      content: "请使用浏览器或系统自带的分享功能发送当前房间链接。",
       showCancel: false
     })
   }
@@ -135,15 +130,15 @@ export function initBtns(
     }
   }
 
-  return { 
-    btnText, 
-    btnText2, 
-    h1, 
-    pText, 
-    onTapBtn, 
-    onTapBtn2, 
-    onTapLeave, 
-    onTapShare, 
+  return {
+    btnText,
+    btnText2,
+    h1,
+    pText,
+    onTapBtn,
+    onTapBtn2,
+    onTapLeave,
+    onTapShare,
     onTapEditMyName,
   }
 }

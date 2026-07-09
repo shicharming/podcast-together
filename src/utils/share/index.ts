@@ -9,7 +9,7 @@ let hasConfigWxJsSDK = false
 
 const _configWxJsSDK = (): Promise<boolean> => {
   if(hasConfigWxJsSDK) return util.getPromise(true)
-  let { isWeChat } = ptApi.getCharacteristic()
+  const { isWeChat } = ptApi.getCharacteristic()
   if(!isWeChat) {
     return util.getPromise(true)
   }
@@ -25,32 +25,25 @@ const _configWxJsSDK = (): Promise<boolean> => {
 
   const _handle = async (a: (a1: boolean) => void): Promise<void> => {
     const res1 = await rq.request<WxConfig>(url, body1)
-    let { code, data } = res1
+    const { data } = res1
     if(!data) {
       a(false)
       return
     }
 
-    let jsApiList: wx.ApiMethod[] = ["updateAppMessageShareData", "updateTimelineShareData"]
-    let data2 = { 
-      ...data, 
+    const jsApiList: wx.ApiMethod[] = ["updateAppMessageShareData", "updateTimelineShareData"]
+    const data2 = {
+      ...data,
       jsApiList,
       openTagList: []
     }
 
-    console.log("去 wx.config...............")
-    console.log(data2)
-    console.log(" ")
     wx.config(data2)
     wx.ready(() => {
-      console.log("wx.ready..............")
       hasConfigWxJsSDK = true
       a(true)
     })
-    wx.error((e) => {
-      console.log("wx.error...............")
-      console.log(e)
-      console.log(" ")
+    wx.error(() => {
       a(false)
     })
     setTimeout(() => {
@@ -60,7 +53,6 @@ const _configWxJsSDK = (): Promise<boolean> => {
 
   return new Promise(_handle)
 }
-
 
 const _setBasic = (title?: string, desc?: string, iconUrl?: string, shareWay?: ShareWay) => {
   if(title) {
@@ -96,9 +88,9 @@ const _setBasic = (title?: string, desc?: string, iconUrl?: string, shareWay?: S
 
 const _setWeChat = (wxShare: WxShare) => {
   if(!hasConfigWxJsSDK) return
-  let { 
-    frdTitle, 
-    frdDesc = "邀请你一起听播客",
+  const {
+    frdTitle,
+    frdDesc = "邀请你加入同步收听房间",
     frdImgUrl = images.APP_LOGO_COS,
     pyqTitle,
     pyqImgUrl = images.APP_LOGO_COS,
@@ -110,30 +102,22 @@ const _setWeChat = (wxShare: WxShare) => {
     desc: frdDesc,
     imgUrl: frdImgUrl,
     link,
-    success() {
-      console.log("分享到微信好友.......")
-    },
-    cancel() {
-      console.log("取消分享到微信好友.......")
-    }
+    success() {},
+    cancel() {}
   })
   wx.updateTimelineShareData({
     title: pyqTitle,
     imgUrl: pyqImgUrl,
     link,
-    success() {
-      console.log("分享到pyq.......")
-    },
-    cancel() {
-      console.log("取消分享到pyq.......")
-    }
+    success() {},
+    cancel() {}
   })
 }
 
 const _reset = () => {
-  let title = "一起听播客"
-  let desc = "跟你的好友一起实时听播客！"
-  let iconUrl = images.FAVI_ICON
+  const title = "Sunny Together - 远程同步收听空间"
+  const desc = "创建可分享的同步收听房间，一起播放、暂停、回应和记录时间点。"
+  const iconUrl = images.FAVI_ICON
   _setBasic(title, desc, iconUrl, "all")
   _setWeChat({ frdTitle: title, pyqTitle: title })
 }
@@ -141,12 +125,11 @@ const _reset = () => {
 const configShare = async (opt?: ShareCfgData): Promise<void> => {
   await _configWxJsSDK()
 
-  // 如果没有 opt 代表 reset
   if(!opt) {
     _reset()
     return
   }
-  let { title, desc, imageUrl, shareWay = "all" } = opt
+  const { title, desc, imageUrl, shareWay = "all" } = opt
   _setBasic(title, desc, imageUrl, shareWay)
   if(opt.wxShare) _setWeChat(opt.wxShare)
 }

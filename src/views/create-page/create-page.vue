@@ -3,28 +3,23 @@ import { computed, ref, onActivated, watch } from 'vue';
 import { hasPreviousRouteInApp, goHome, useRouteAndPtRouter } from "../../routes/pt-router";
 import PtButton from "../../components/pt-button.vue"
 import cp from "./cp-helper"
-import { useTheme } from '../../hooks/useTheme';
-import images from '../../images';
 import ListeningLoader from '../../components/listening-loader.vue'
 
-const { theme } = useTheme()
 const { router, route } = useRouteAndPtRouter()
 const hasPrev = hasPreviousRouteInApp()
 const inputValue = ref<string>("")
 const inputEl = ref<HTMLInputElement | null>(null)
 
 const hasQuery = ref(false)
-// 监听 query 的变化，更新 hasQuery
 watch(() => route.query, (newV, oldV) => {
   if(route.name !== "create") return
   const { title, text, link } = newV
-  const newHasQuery = Boolean(title || text || link)
-  hasQuery.value = newHasQuery
+  hasQuery.value = Boolean(title || text || link)
 })
 
 const canSubmit = computed(() => {
-  let val = inputValue.value
-  let v = val.trim()
+  const val = inputValue.value
+  const v = val.trim()
   if(v.length < 10) return false
   const reg = /^http(s)?:\/\/[\w\.-]*\w{1,32}\.\w{2,6}\S*$/g
   return reg.test(val)
@@ -47,10 +42,13 @@ const onTapBack = () => {
   else goHome(router)
 }
 
+const onTapFocusRoom = () => {
+  cp.createFocusRoom(router, route)
+}
+
 onActivated(() => {
   const { title, text, link } = route.query
 
-  // 有从外部传来值时
   if(title || text || link) {
     hasQuery.value = true
     cp.useLinkFromQuery(router, route)
@@ -60,122 +58,166 @@ onActivated(() => {
     inputEl.value?.focus()
   }
 })
-
 </script>
 
 <template>
-  <div class="page">
-    <div class="page-container">
-      <h1>播客链接</h1>
-      <input 
-        v-model="inputValue" 
-        placeholder="请黏贴单集链接" 
-        type="url" 
-        @keyup.enter="onInputConfirm" 
-        maxlength="1000"
-        ref="inputEl"
-      />
-      <p>提示: 目前支持 xiaoyuzhoufm.com、podcasts.apple.com/cn/ 或者后缀为 .mp3 的链接</p>
-      <p class="check-detail">
-        <a href="https://yenche.zhubai.love/posts/2172097942360440832" target="_blank">
-          <div class="div-bg-img check-detail-question"></div>
-          <span>查看详情</span>
-        </a>
+  <main class="create-page">
+    <section class="create-shell">
+      <p class="eyebrow">New listening room</p>
+      <h1>导入单集链接</h1>
+      <p class="intro">
+        粘贴小宇宙、Apple Podcasts 多地区链接，或可公开访问的 mp3 地址。系统会解析标题、封面和音频源，并创建一个可分享的同步房间。
       </p>
-    </div>
-    <div class="page-btns-virtual"></div>
-  </div>
-  <div class="page-btns-container">
-    <div class="page-btns">
-      <pt-button 
-        class="join-main-btn" 
-        text="确定" 
+
+      <label class="url-box">
+        <span>Episode URL</span>
+        <input
+          v-model="inputValue"
+          placeholder="https://www.xiaoyuzhoufm.com/episode/..."
+          type="url"
+          @keyup.enter="onInputConfirm"
+          maxlength="1000"
+          ref="inputEl"
+        />
+      </label>
+
+      <div class="support-row">
+        <span>xiaoyuzhoufm.com</span>
+        <span>Apple Podcasts JP / CA / CN</span>
+        <span>direct mp3</span>
+      </div>
+    </section>
+
+    <section class="create-actions">
+      <pt-button
+        class="join-main-btn"
+        text="创建房间"
         @click="onTapConfirm"
         :disabled="!canSubmit"
       />
-      <pt-button :text="hasPrev ? '返回' : '回首页'" type="other" @click="onTapBack"></pt-button>
-    </div>
-  </div>
+      <pt-button class="focus-room-btn" text="创建专注房间（无需播客）" type="other" @click="onTapFocusRoom"></pt-button>
+      <pt-button :text="hasPrev ? '返回' : '回到首页'" type="other" @click="onTapBack"></pt-button>
+    </section>
 
-  <!-- 从参数创建房间 -->
-  <div v-if="hasQuery" class="page-full">
-    <ListeningLoader />
-    <div class="pf-text">
-      <span>正在创建房间..</span>
+    <div v-if="hasQuery" class="page-full">
+      <ListeningLoader />
+      <div class="pf-text">
+        <span>正在创建收听房间</span>
+      </div>
     </div>
-  </div>
+  </main>
 </template>
 
 <style scoped lang="scss">
-
-.page-btns-virtual {
-  height: 50px;
+.create-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 68px 20px 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(233, 239, 244, .5) 100%),
+    var(--bg-color);
 }
 
-.page-container {
-
-  h1 {
-    margin-block-start: 0;
-    font-size: 38px;
-    line-height: 50px;
-    color: var(--text-color);
-    letter-spacing: 2px;
-    margin-bottom: 50px;
-  }
-
-  input {
-    font-size: 32px;
-    line-height: 46px;
-    color: var(--desc-color);
-    border: 0;
-    outline: none;
-    text-align: center;
-  }
-
-  input::-webkit-input-placeholder {
-    color: var(--note-color);
-  }
-
-  p {
-    margin-block-start: 30px;
-    margin-block-end: 10px;
-    font-size: 14px;
-    color: var(--note-color);
-    text-align: center;
-    max-width: 320px;
-    user-select: text;
-  }
-
-  .check-detail {
-    margin-top: 0;
-    
-    a {
-      // color: rgb(66, 133, 244);
-      color: var(--tap-color);
-      display: flex;
-      align-items: center;
-
-      .check-detail-question {
-        width: 16px;
-        height: 16px;
-        opacity: .5;
-        margin-right: 5px;
-        background-image: v-bind("'url(' + (theme === 'light' ? images.IC_QUESTION : images.IC_QUESTION_DM) + ')'");
-      }
-    }
-  }
-
+.create-shell,
+.create-actions {
+  width: 100%;
+  max-width: 560px;
 }
 
-.join-main-btn {
-  margin-bottom: 20px;
+.eyebrow {
+  margin: 0 0 14px;
+  color: var(--accent-color);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: clamp(34px, 7vw, 54px);
+  line-height: 1.08;
+}
+
+.intro {
+  margin: 18px 0 38px;
+  color: var(--desc-color);
+  font-size: 16px;
+  line-height: 1.8;
+  text-align: left;
+}
+
+.url-box {
+  display: block;
+  padding: 18px;
+  border: 1px solid var(--line-color);
+  border-radius: 8px;
+  background-color: var(--card-color);
+  box-sizing: border-box;
+
+  span {
+    display: block;
+    margin-bottom: 12px;
+    color: var(--note-color);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+}
+
+input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  outline: none;
+  color: var(--text-color);
+  font-size: 18px;
+  line-height: 1.6;
+  text-align: left;
+}
+
+input::-webkit-input-placeholder {
+  color: var(--note-color);
+}
+
+.support-row {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  span {
+    padding: 6px 10px;
+    border-radius: 6px;
+    background-color: var(--tag-bg);
+    color: var(--tag-text);
+    font-size: 12px;
+    font-weight: 700;
+  }
+}
+
+.create-actions {
+  padding-top: 36px;
+
+  .join-main-btn {
+    margin-bottom: 12px;
+  }
+
+  .focus-room-btn {
+    margin-bottom: 12px;
+  }
 }
 
 .page-full {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: space-around;
   justify-content: space-evenly;
   align-items: center;
   width: 100vw;
@@ -191,5 +233,4 @@ onActivated(() => {
     line-height: 1.5;
   }
 }
-
 </style>

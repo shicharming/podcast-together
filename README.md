@@ -1,123 +1,163 @@
-# 一起听播客
+# Sunny Together
 
-<img src="./resources/screenshot_index.png" width="700" />
+Sunny Together is a listen-together web app for podcasts and public audio links.
+It creates a shared room where listeners can play, pause, react, add timestamps,
+switch episodes, and optionally view public captions in sync.
 
-<img src="./resources/screenshot_listening.png" width="700" />
+Production:
 
-> 跟你的好友一起实时连线听播客！
+- Frontend: https://listen.jiaminshi.com
+- Backend API: https://podcast-together-api.sjm2000411.workers.dev
 
-<br>
+## What It Supports
 
-## 😎 如何使用
+- Xiaoyuzhou episode links
+- Apple Podcasts links, including JP / CA / CN / US regions
+- Public podcast pages that expose audio or RSS metadata
+- WeChat audio article links
+- SSPAI / podcast pages
+- Direct public `mp3` / `m4a` URLs
+- Public RSS transcripts via Podcasting 2.0 `<podcast:transcript>`
 
-1. 打开小宇宙 App，在单集详情页，点击屏幕右上角的分享按钮（如下图所示），再点击复制链接。
+Spotify and Pocket Casts app-only transcripts are not read unless the creator
+publishes them into a public RSS feed.
 
-<img src="./resources/xyz_share.jpg" width="500" />
+## Current Features
 
-2. 访问 [https://podcastogether.com/](https://podcastogether.com/) 创建房间，依页面的提示黏贴上一步复制到的链接，即可创建能跟好友一起实时聆听的播客房间啦！
+- No account required
+- Shared playback rooms
+- Cloudflare Workers + Durable Objects backend
+- Live WebSocket playback sync
+- Mobile recovery after browser background / inactive state
+- Listener inactive status hints
+- Pause reasons, including waiting for someone to return
+- Emoji reactions, also saved as timestamp notes
+- Timestamp notes that can be clicked to jump
+- Replace the current audio inside a room
+- Optional captions per listener
+- Chinese / Japanese / English UI based on browser language
+- Local nickname memory
+- A Pomodoro-style room interface that keeps all listening controls available
 
-详情参见[使用指南](https://yenche.zhubai.love/posts/2172097942360440832)
+## Captions
 
-<br>
+Sunny Together only uses public transcripts for now. It does not generate AI
+transcripts.
 
-## 🎧 介绍
+Supported transcript formats:
 
-网易云音乐能一起听歌却不支持一起听 Podcast，小宇宙也不支持，Spotify 需要成为会员才能一起听......
+- `text/vtt`
+- `application/x-subrip` / SRT
+- `application/json`
+- `text/plain` as untimed transcript metadata
 
-百度了一下，没有人提供这项服务，我就只好自己开发了🥲
+Captions are loaded only when a listener enables them. The setting is local to
+that browser and is not synchronized to other listeners.
 
-### 1 无需登录，直接听
+## Architecture
 
-输入昵称，就可以进入房间，跟好友一起听啦！目前最多支持 15 人同时一起听。
+The frontend is a Vite + Vue app. The production build uses:
 
-### 2 支持小宇宙 / Apple Podcast 中国区
+```env
+VITE_API_URL=https://podcast-together-api.sjm2000411.workers.dev
+VITE_WEBSOCKET_URL=wss://podcast-together-api.sjm2000411.workers.dev/ws
+```
 
-目前已知支持 `xiaoyuzhoufm.com/episode/` 或者 `podcasts.apple.com/cn/` 的链接（不支持短链），后者解析稍慢是正常的，如果解析失败不妨稍后再尝试。
+The backend runs on Cloudflare Workers. Each room is coordinated by a Durable
+Object, which stores room state, participants, playback status, timestamp notes,
+and public transcript references.
 
-另外，还支持 https 协议的 CDN 链接，也就是你上传 `.mp3` 文件至任意可公网访问的云上，获得 https 链接后即可黏贴到 [https://podcastogether.com/create](https://podcastogether.com/create) 中一起听。
+## Development
 
-更多音源详情请参见[这里](https://github.com/yenche123/podcast-together/discussions/3)
+Install dependencies from the repo root:
 
-### 3 支持深色模式
+```sh
+pnpm install
+```
 
-<img src="./resources/screenshot_index_dm3.png" width="700" />
+Run the frontend:
 
-<img src="./resources/screenshot_listening_dm.png" width="700" />
+```sh
+pnpm dev
+```
 
-<img src="./resources/phone_room.png" width="500" />
+Run the backend locally:
 
-从一开始就支持深色模式！晚上一起听，再也不亮瞎眼🙈
+```sh
+cd workers
+npm install
+npx wrangler dev --port 8787 --local-protocol http
+```
 
-### 4 没了
+Build frontend:
 
-功能这么少？一起听，应该如此简单！
+```sh
+pnpm build
+```
 
-<br>
+Typecheck backend:
 
-## 🧑‍💻 自行构建/部署
+```sh
+cd workers
+npm run typecheck
+```
 
-非常欢迎自己兜一套减轻我的云服务资源，详情参见[语雀文档](https://www.yuque.com/cuiyanzhe/sx698m/etgegl)
+## Deployment
 
-<br>
+Deploy backend:
 
-## ✉️ 联系我
+```sh
+cd workers
+npx wrangler deploy
+```
 
-1. Github [讨论区](https://github.com/yenche123/podcast-together/discussions)
+Deploy frontend:
 
-2. [Email](mailto:tsuiyenche@outlook.com)
+```sh
+pnpm build
+npx wrangler pages deploy dist --project-name podcast-together
+```
 
-<br>
+After deployment, verify the built frontend includes the production backend URL:
 
-## 特别鸣谢
+```sh
+rg "podcast-together-api.sjm2000411.workers.dev" dist
+```
 
-以下名单不区分先后顺序。
+## Smoke Test
 
-1. [Vite](https://cn.vitejs.dev/) + [Vue 3](https://staging-cn.vuejs.org/) + [Vue-Router](https://router.vuejs.org/zh/guide/) + [Pinia](https://pinia.vuejs.org/)
+Recommended production smoke:
 
-你值得拥有的前端工具链
+1. Open https://listen.jiaminshi.com
+2. Paste a supported episode URL.
+3. Create a room.
+4. Open the room in a second browser or device.
+5. Test play / pause sync.
+6. Test reaction sync and timestamp creation.
+7. Background one browser, resume it, and confirm playback catches up.
+8. Enable captions on one device and confirm the setting stays local.
+9. Confirm the Pomodoro-style room interface still exposes playback, captions,
+   reactions, timestamps, replace audio, share, and leave controls.
 
-2. [TypeScript](https://github.com/microsoft/TypeScript)
+## Recent Decisions
 
-让前端开发具备类型检查的能力。我常阅读[这份指南](https://ts.xcatliu.com/)
+- Backend remains on Cloudflare Workers + Durable Objects.
+- Browser inactive recovery uses HTTP state refresh plus WebSocket reconnect.
+- If autoplay is blocked, the app shows a resume button instead of forcing audio.
+- Emoji reactions are also saved as timestamp notes.
+- The room page always uses a Pomodoro-style interface; there is no separate
+  discreet-interface toggle.
+- Captions use public RSS transcript references only; no AI transcript generation.
 
-3. [Laf](https://www.lafyun.com/)
+## Handoff Notes
 
-完全开源的一站式后端开发平台，像写博客一样写代码！
+- Production Worker version from the latest deploy: `e1a23695-235e-4ea1-a9de-1d0aad2914de`
+- Latest verified Pages preview: https://eaa354b2.podcast-together-os6.pages.dev
+- Production custom domain is configured as https://listen.jiaminshi.com
+- Production API smoke for `/parse-transcript` passed with a public VTT fixture.
+- Room smoke passed for create / enter / participant state / WebSocket reaction /
+  reaction-created timestamp note.
 
-4. [Shikwasa](https://github.com/jessuni/shikwasa)
-
-一个开源、专为播客设计的前端网页播放器。本项目对其做了[定制](https://github.com/yenche123/shikwasa)。
-
-5. [pnpm](https://www.pnpm.cn/)
-
-对 npm 软件包管理器做了一系列改进。
-
-6. [小宇宙](https://www.xiaoyuzhoufm.com/)
-
-感谢小宇宙的单集链接支持 Open-Graph 协议，能获取到 og:audio 的 meta 标签
-
-7. [fluentui-emoji](https://github.com/microsoft/fluentui-emoji)
-
-感谢微软开源的 emoji，非常 Nice!!!
-
-8. [uiball-loaders](https://uiball.com/loaders/)
-
-超好看且好用的加载图标/动画，没有之一。
-
-9. 你
-
-~~谢谢你玩我~~
-
-谢谢你看到这里！
-
-<br>
-
-## 支持我
-
-<img src="./resources/appreciation_code.jpg" width="200" />
-
-如果有帮助到你，欢迎向我打赏，请我喝☕
-
-## 开源协议
+## License
 
 MIT

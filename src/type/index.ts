@@ -24,6 +24,9 @@ export interface Participant {
   guestId: string
   heartbeatStamp: number
   enterStamp: number
+  clientState?: "visible" | "hidden" | "idle" | "reconnecting"
+  lastActiveStamp?: number
+  lastVisibleStamp?: number
 }
 
 export interface ContentData {
@@ -36,13 +39,27 @@ export interface ContentData {
   linkUrl?: string
   seriesName?: string   // 播客专栏名称，比如 "商业就是这样"
   seriesUrl?: string    // 播客专栏链接
+  transcripts?: TranscriptRef[]
+}
+
+export interface TranscriptRef {
+  url: string
+  type: string
+  language?: string
+  rel?: string
+}
+
+export interface TranscriptCue {
+  startMs: number
+  endMs: number
+  text: string
 }
 
 export interface RoRes {
   roomId: string
   content: ContentData
   playStatus: "PLAYING" | "PAUSED"
-  speedRate: "1"
+  speedRate: "0.8" | "1" | "1.2" | "1.5" | "1.7"
   operator: string
   contentStamp: number
   operateStamp: number
@@ -50,6 +67,7 @@ export interface RoRes {
   guestId?: string
   iamOwner?: "Y" | "N"
   everyoneCanOperatePlayer?: "Y" | "N"
+  notes?: any[]
 }
 
 

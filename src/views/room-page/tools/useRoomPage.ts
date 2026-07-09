@@ -1,10 +1,5 @@
-/**
- * @file 房间处理主逻辑
- * @author yenche123 <tsuiyenche@outlook.com>
- * @copyright TSUI YEN-CHE 2022
- */
-import { ref, reactive, onActivated, onDeactivated, nextTick } from "vue"
-import { PageData, PageState, WsMsgRes, RoomStatus, PlayStatus, RevokeType } from "../../../type/type-room-page"
+import { ref, reactive, onActivated, onDeactivated, onMounted, onUnmounted, nextTick } from "vue"
+import { PageData, PageState, WsMsgRes, RoomStatus, PlayStatus, RevokeType, ClientState, StudyStatus } from "../../../type/type-room-page"
 import { ContentData, RequestRes, RoRes } from "../../../type"
 import { RouteLocationNormalizedLoaded } from "vue-router"
 import { useRouteAndPtRouter, PtRouter, goHome } from "../../../routes/pt-router"
@@ -20,12 +15,17 @@ import { initPlayer } from "./init-player"
 import { initWebSocket, sendToWebSocket } from "./init-websocket"
 import { shareData } from "./init-share"
 import { request_enter, request_heartbeat, request_leave } from "./room-request"
+import { request_parse } from "../../create-page/cp-request"
 
 // 一些常量
 const COLLECT_TIMEOUT = 300    // 收集最新状态的最小间隔
 const MAX_HB_NUM = 960    // 心跳最多轮询次数；如果每 15s 一次，相当于 4hr
 
 // 播放器
+const INACTIVE_WARN_MS = 45 * 1000
+const IDLE_PROMPT_MS = 8 * 60 * 1000
+const REACTION_TTL_MS = 8 * 1000
+
 let player: any;
 const playerEl = ref<HTMLElement | null>(null)
 let playStatus: PlayStatus = "PAUSED"    // 播放状态
@@ -44,8 +44,17 @@ const pageData: PageData = reactive({
   participants: [],
   showMoreBox: false,   // 是否要展示 “展开更多” 的按钮
   amIOwner: false,
-  everyoneCanOperatePlayer: "Y"
+  everyoneCanOperatePlayer: "Y",
+  reactions: [],
+  notes: [],
+  pauseNotice: "",
+  needsPlaybackResume: false,
+  inactiveListeners: [],
 })
+
+// 新功能相关的杂项
+let pendingPauseReason = ""   // 下一次暂停时携带的理由
+let reactionSeq = 0           // reaction 的自增 id
 
 // 其他杂七杂八的数据
 let nickName: string = ""
@@ -66,6 +75,10 @@ let lastOperateLocalStamp = 0        // 上一个本地设置远端服务器的�
 let lastNewStatusFromWsStamp = 0    // 上一次收到 web-socket NEW_STATUS 的时间戳
 let lastHeartbeatStamp = 0          // 上一次心跳的时间戳
 let lastReConnectWs = 0
+let lastInteractionStamp = time.getLocalTime()
+let idleCheckTimer = 0
+let isSyncingRoom = false
+let suppressLeaveOnce = false
 
 // 是否为远端调整播放器状态，如果是，则在监听 player 各回调时不往下执行
 let isRemoteSetSeek = false
@@ -98,7 +111,7 @@ const toEditMyName = async (newName: string) => {
   nickName = newName
   // 上报远端
   // 销毁心跳、再用新的心跳上报
-  await request_heartbeat(pageData.roomId, nickName)
+  await request_heartbeat(pageData.roomId, nickName, getClientState())
 
   // 修改缓存
   let userData = ptUtil.getUserData()
@@ -112,27 +125,286 @@ const onEveryoneCanOperatePlayerChange = (opt: { checked: boolean }) => {
   collectLatestStatus()
 }
 
+const getClientState = (): ClientState => {
+  if(typeof document !== "undefined" && document.hidden) return "hidden"
+  const now = time.getLocalTime()
+  if(now - lastInteractionStamp > IDLE_PROMPT_MS) return "idle"
+  return "visible"
+}
+
+const markActive = () => {
+  lastInteractionStamp = time.getLocalTime()
+  updateInactiveListeners()
+}
+
+const updateInactiveListeners = () => {
+  const now = time.getLocalTime()
+  pageData.inactiveListeners = pageData.participants.filter(v => {
+    if(v.isMe) return false
+    if(v.clientState === "hidden" || v.clientState === "idle" || v.clientState === "reconnecting") return true
+    const lastVisible = v.lastVisibleStamp || v.lastActiveStamp || v.heartbeatStamp
+    return playStatus === "PLAYING" && now - lastVisible > INACTIVE_WARN_MS
+  })
+}
+
+const pauseForInactiveListeners = () => {
+  pauseWithReason("Waiting")
+}
+
+const continuePlayback = async () => {
+  if(!player) return
+  pageData.needsPlaybackResume = false
+  try {
+    const result = player.play()
+    if(result?.catch) await result
+  } catch {
+    pageData.needsPlaybackResume = true
+  }
+}
+
+async function syncRoomNow(forceReconnect = false) {
+  if(!pageData.roomId || !nickName || isSyncingRoom) return
+  isSyncingRoom = true
+  pausedSec = 0
+  try {
+    let res = await request_heartbeat(pageData.roomId, nickName, getClientState())
+    if(res?.code === "E4003") {
+      res = await request_enter(pageData.roomId, nickName, getClientState())
+      if(res?.code === "0000") guestId = res.data?.guestId ?? guestId
+    }
+    if(res?.code === "0000" && res.data) {
+      applyRoomSnapshot(res.data as RoRes, "http", false)
+      if(forceReconnect || !ws || ws.readyState >= WebSocket.CLOSING) connectWebSocket()
+    }
+  } finally {
+    isSyncingRoom = false
+  }
+}
+
+function setupActivityListeners() {
+  const onActive = () => markActive()
+  const onResume = () => {
+    markActive()
+    syncRoomNow(true)
+  }
+  const onVisibility = () => {
+    if(document.hidden) {
+      if(pageData.roomId && nickName) request_heartbeat(pageData.roomId, nickName, "hidden")
+      return
+    }
+    onResume()
+  }
+  const events = ["pointerdown", "touchstart", "keydown", "mousemove"]
+  events.forEach(v => window.addEventListener(v, onActive, { passive: true }))
+  window.addEventListener("focus", onResume)
+  window.addEventListener("pageshow", onResume)
+  document.addEventListener("visibilitychange", onVisibility)
+  idleCheckTimer = window.setInterval(() => {
+    if(pageData.state !== 3 || document.hidden) return
+    if(time.getLocalTime() - lastInteractionStamp <= IDLE_PROMPT_MS) return
+    request_heartbeat(pageData.roomId, nickName, "idle")
+    cui.showModal({
+      title: "Still listening?",
+      content: "Tap once to keep your room status active.",
+      showCancel: false,
+      confirmText: "I'm here",
+    }).then(() => {
+      markActive()
+      request_heartbeat(pageData.roomId, nickName, "visible")
+    })
+  }, 60 * 1000)
+
+  return () => {
+    events.forEach(v => window.removeEventListener(v, onActive))
+    window.removeEventListener("focus", onResume)
+    window.removeEventListener("pageshow", onResume)
+    document.removeEventListener("visibilitychange", onVisibility)
+    if(idleCheckTimer) clearInterval(idleCheckTimer)
+    idleCheckTimer = 0
+  }
+}
+
+let cleanupActivityListeners: (() => void) | undefined
+
+/*********** 新功能：reaction / 时间点笔记 / 暂停理由 ***********/
+
+// 发送一个 emoji reaction
+const sendReaction = (emoji: string) => {
+  if(!ws) return
+  sendToWebSocket(ws, {
+    operateType: "SEND_REACTION",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    emoji,
+    position: getPlayerCurrentTimeMs(),
+  })
+}
+
+// 收到 reaction 时，短暂显示后自动移除
+function pushReaction(emoji: string, senderName: string) {
+  const id = ++reactionSeq
+  pageData.reactions.push({ id, emoji, nickName: senderName })
+  setTimeout(() => {
+    const idx = pageData.reactions.findIndex(v => v.id === id)
+    if(idx >= 0) pageData.reactions.splice(idx, 1)
+  }, REACTION_TTL_MS)
+}
+
+// 在当前播放位置打一个时间点笔记
+const addNote = (text: string) => {
+  if(!ws) return
+  const position = util.numToFix((player?.currentTime ?? 0) * 1000, 0)
+  sendToWebSocket(ws, {
+    operateType: "ADD_NOTE",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    position,
+    text: text.slice(0, 200),
+  })
+}
+
+// 收到笔记，去重后按位置排序插入
+function mergeNote(note: PageData["notes"][number]) {
+  if(pageData.notes.some(v => v.noteId === note.noteId)) return
+  pageData.notes.push(note)
+  pageData.notes.sort((a, b) => a.position - b.position)
+}
+
+// 点击某个时间点，跳转播放位置
+const seekToNote = (positionMs: number) => {
+  if(!player) return
+  isRemoteSetSeek = false
+  player.seek(positionMs / 1000)
+}
+
+const getPlayerCurrentTimeMs = (): number => {
+  return util.numToFix((player?.currentTime ?? 0) * 1000, 0)
+}
+
+// 暂停并附上理由（摸鱼彩蛋）
+const pauseWithReason = (reason: string) => {
+  pendingPauseReason = reason
+  if(!player) return
+  if(playStatus === "PLAYING") {
+    // 触发 player 的 pause 回调，进而带理由上报
+    player.pause()
+  } else {
+    // 已经是暂停态，直接上报一次带理由的状态
+    collectLatestStatus()
+  }
+}
+
+// 带理由暂停时常驻显示，直到房间重新播放。
+function showPauseNotice(operatorGuestId: string, reason: string) {
+  const who = pageData.participants.find(v => v.guestId === operatorGuestId)?.nickName ?? "有人"
+  pageData.pauseNotice = `${who} 暂停中：${reason}`
+}
+
+const replaceContent = async (link: string): Promise<boolean> => {
+  if(!ws) return false
+  const res = await request_parse(link)
+  if(res?.code !== "0000" || !res.data) return false
+
+  return sendToWebSocket(ws, {
+    operateType: "SET_CONTENT",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    roomData: res.data,
+  })
+}
+
+/*********** Study Mode：共享番茄钟 / todo / 状态 ***********/
+
+const sendTimer = (
+  action: "start" | "pause" | "reset" | "skip" | "config",
+  config?: Record<string, number>,
+) => {
+  if(!ws) return
+  sendToWebSocket(ws, {
+    operateType: "TIMER_SET",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    action,
+    config,
+  })
+}
+
+const sendTodo = (action: "add" | "toggle" | "delete", payload: { text?: string; todoId?: string }) => {
+  if(!ws) return
+  sendToWebSocket(ws, {
+    operateType: "TODO_OP",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    action,
+    ...payload,
+  })
+}
+
+const sendStatus = (status: StudyStatus) => {
+  if(!ws) return
+  sendToWebSocket(ws, {
+    operateType: "SET_STATUS",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    status,
+  })
+}
+
+// 从服务器时间戳计算番茄钟剩余毫秒（复用 time.getTime() 校准，不靠本地 interval 累计）
+const getTimerRemainingMs = (): number => {
+  const timer = pageData.study?.timer
+  if(!timer) return 0
+  const elapsed = timer.isRunning ? timer.elapsedMs + (time.getTime() - timer.startStamp) : timer.elapsedMs
+  return Math.max(0, timer.durationMs - elapsed)
+}
+
 export const useRoomPage = () => {
   const rr = useRouteAndPtRouter()
   router = rr.router
   route = rr.route
-  
+
   init()
 
-  return { 
-    pageData, 
-    playerEl, 
-    route, 
-    router, 
-    toHome, 
-    toContact, 
+  return {
+    pageData,
+    playerEl,
+    route,
+    router,
+    toHome,
+    toContact,
     toEditMyName,
     onEveryoneCanOperatePlayerChange,
+    sendReaction,
+    addNote,
+    seekToNote,
+    getPlayerCurrentTimeMs,
+    pauseWithReason,
+    replaceContent,
+    continuePlayback,
+    pauseForInactiveListeners,
+    sendTimer,
+    sendTodo,
+    sendStatus,
+    getTimerRemainingMs,
   }
 }
 
 // 初始化一些东西，比如 onActivated / onDeactivated 
 function init() {
+  onMounted(() => {
+    cleanupActivityListeners = setupActivityListeners()
+  })
+
+  onUnmounted(() => {
+    cleanupActivityListeners?.()
+  })
+
   onActivated(() => {
     enterRoom()
   })
@@ -154,7 +426,7 @@ export async function enterRoom() {
   nickName = userData.nickName as string
   localId = userData.nonce as string
   
-  let res = await request_enter(roomId, nickName)
+  let res = await request_enter(roomId, nickName, getClientState())
   enterResToErrState(res)
   if(!res) return
   let { code, data } = res
@@ -198,7 +470,9 @@ function afterEnter(roRes: RoRes) {
   pageData.content = roRes.content
   pageData.amIOwner = roRes?.iamOwner === "Y" ? true : false
   pageData.participants = showParticipants(roRes.participants, guestId)
+  pageData.notes = roRes.notes ? [...roRes.notes].sort((a, b) => a.position - b.position) : pageData.notes
   pageData.showMoreBox = handleShowMoreBox(roRes.content)
+  updateInactiveListeners()
 
   createPlayer()
   heartbeat()
@@ -208,11 +482,26 @@ function afterEnter(roRes: RoRes) {
 
 // 创建播放器
 function createPlayer() {
-  let content = pageData.content as ContentData
+  let content = pageData.content
+  if(player) {
+    try {
+      player.destroy()
+    }
+    catch(err) {}
+    player = null
+  }
+  srcDuration = 0
+  playStatus = "PAUSED"
 
   waitPlayer = new Promise((a: SimpleFunc) => {
     playerAlready = a
   })
+
+  // 纯专注房间：没有播客，不建播放器，直接展示页面（进入 Study Mode）
+  if(!content || !content.audioUrl) {
+    showPage()
+    return
+  }
 
   const audio = {
     src: content.audioUrl,
@@ -239,6 +528,7 @@ function createPlayer() {
   const playing = (e: Event) => {
     pausedSec = 0
     playStatus = "PLAYING"
+    pageData.needsPlaybackResume = false
     if(isRemoteSetPlaying) {
       isRemoteSetPlaying = false
       return
@@ -360,6 +650,11 @@ function collectLatestStatus() {
     if(pageData.amIOwner) {
       param.everyoneCanOperatePlayer = pageData.everyoneCanOperatePlayer
     }
+    // 暂停理由（摸鱼彩蛋）：仅在暂停时携带一次
+    if(playStatus === "PAUSED" && pendingPauseReason) {
+      param.reason = pendingPauseReason
+    }
+    pendingPauseReason = ""
     sendToWebSocket(ws, param)
     checkOperated()
   }
@@ -384,6 +679,31 @@ async function checkOperated() {
 }
 
 // 每若干秒的心跳
+function applyRoomSnapshot(roRes: RoRes, fromType: RevokeType = "http", protectRecent = true) {
+  pageData.content = roRes.content
+  pageData.participants = showParticipants(roRes.participants, guestId)
+  if(roRes.notes) pageData.notes = [...roRes.notes].sort((a, b) => a.position - b.position)
+  updateInactiveListeners()
+
+  const now = time.getLocalTime()
+  const diff1 = now - lastOperateLocalStamp
+  const diff2 = now - lastNewStatusFromWsStamp
+  if(protectRecent && (diff1 < 900 || diff2 < 900)) return
+
+  latestStatus = {
+    roomId: roRes.roomId,
+    playStatus: roRes.playStatus,
+    speedRate: roRes.speedRate,
+    operator: roRes.operator,
+    contentStamp: roRes.contentStamp,
+    operateStamp: roRes.operateStamp,
+  }
+  if(roRes.everyoneCanOperatePlayer) {
+    pageData.everyoneCanOperatePlayer = roRes.everyoneCanOperatePlayer
+  }
+  receiveNewStatus(fromType)
+}
+
 function heartbeat() {
   const _env = util.getEnv()
   heartbeatNum = 0
@@ -395,6 +715,8 @@ function heartbeat() {
   }
 
   const _newRoomStatus = (roRes: RoRes) => {
+    applyRoomSnapshot(roRes, "http", true)
+    return undefined
     pageData.content = roRes.content
     pageData.participants = showParticipants(roRes.participants, guestId)
 
@@ -423,7 +745,7 @@ function heartbeat() {
       operateStamp: roRes.operateStamp
     }
     if(roRes.everyoneCanOperatePlayer) {
-      pageData.everyoneCanOperatePlayer = roRes.everyoneCanOperatePlayer
+      pageData.everyoneCanOperatePlayer = roRes.everyoneCanOperatePlayer as "Y" | "N"
     }
     receiveNewStatus("http")
   }
@@ -466,7 +788,7 @@ function heartbeat() {
     }
     else pausedSec = 0
 
-    const res = await request_heartbeat(pageData.roomId, nickName)
+    const res = await request_heartbeat(pageData.roomId, nickName, getClientState())
     if(!res) return
     const { code, data } = res
     if(code === "0000") {
@@ -475,7 +797,7 @@ function heartbeat() {
     }
     else if(code === "E4004") _closeRoom(12, false)
     else if(code === "E4006") _closeRoom(11, false)
-    else if(code === "E4003") _closeRoom(14, false)
+    else if(code === "E4003") syncRoomNow(true)
 
   }, _env.HEARTBEAT_PERIOD * 1000)
 }
@@ -501,7 +823,7 @@ async function resume() {
     catch(err) {}
     await util.waitMilli(500)
   }
-  let res = await request_enter(pageData.roomId, nickName)
+  let res = await request_enter(pageData.roomId, nickName, getClientState())
   console.log("重新进入房间的结果..........")
   console.log(res)
   console.log(" ")
@@ -513,8 +835,7 @@ async function resume() {
   }
   let roRes = res.data as RoRes
   guestId = roRes.guestId ?? ""
-  pageData.content = roRes.content
-  pageData.participants = showParticipants(roRes.participants, guestId)
+  applyRoomSnapshot(roRes, "http", false)
   heartbeat()
   connectWebSocket()
 }
@@ -522,6 +843,9 @@ async function resume() {
 // 使用 web-socket 去建立连接
 function connectWebSocket() {
   receiveWsNum = 0
+  if(ws && ws.readyState < WebSocket.CLOSING) {
+    try { ws.close() } catch(err) {}
+  }
 
   const onmessage = (msgRes: WsMsgRes) => {
     receiveWsNum++
@@ -540,11 +864,32 @@ function connectWebSocket() {
       if(roomStatus.everyoneCanOperatePlayer) {
         pageData.everyoneCanOperatePlayer = roomStatus.everyoneCanOperatePlayer
       }
+      if(roomStatus.playStatus === "PAUSED" && roomStatus.reason) {
+        showPauseNotice(roomStatus.operator, roomStatus.reason)
+      }
+      else if(roomStatus.playStatus === "PLAYING") {
+        pageData.pauseNotice = ""
+      }
       receiveNewStatus()
     }
     else if(rT === "HEARTBEAT") {
       console.log("收到 ws 的HEARTBEAT.......")
       console.log(" ")
+    }
+    else if(rT === "REACTION" && msgRes.reaction) {
+      pushReaction(msgRes.reaction.emoji, msgRes.reaction.nickName)
+    }
+    else if(rT === "NOTE" && msgRes.note) {
+      mergeNote(msgRes.note)
+    }
+    else if(rT === "NOTES" && msgRes.notes) {
+      pageData.notes = [...msgRes.notes].sort((a, b) => a.position - b.position)
+    }
+    else if(rT === "NEW_CONTENT" && msgRes.content && msgRes.roomStatus) {
+      receiveNewContent(msgRes.content, msgRes.roomStatus, msgRes.notes ?? [])
+    }
+    else if(rT === "STUDY_STATE" && msgRes.study) {
+      pageData.study = msgRes.study
     }
   }
 
@@ -557,6 +902,7 @@ function connectWebSocket() {
     if(code === 1006) {
       // 做一个防抖节流
       if(lastReConnectWs + 5000 > now) return
+      lastReConnectWs = now
       lastHeartbeatStamp = now
       connectWebSocket()
     }
@@ -566,7 +912,7 @@ function connectWebSocket() {
     onmessage,
     onclose
   }
-  ws = initWebSocket(callbacks)
+  ws = initWebSocket(callbacks, pageData.roomId)
   checkWebSocket()
 }
 
@@ -574,8 +920,7 @@ function connectWebSocket() {
 async function checkWebSocket() {
   await util.waitMilli(5000)
   if(receiveWsNum < 2) {
-    pageData.state = 18
-    leaveRoom()
+    syncRoomNow(true)
   }
 }
 
@@ -592,6 +937,7 @@ function firstSend() {
 
 async function receiveNewStatus(fromType: RevokeType = "ws") {
   if(latestStatus.roomId !== pageData.roomId) return
+  updateInactiveListeners()
 
   await waitPlayer
   let { contentStamp } = latestStatus
@@ -625,9 +971,17 @@ async function receiveNewStatus(fromType: RevokeType = "ws") {
       console.log("远端请求播放......")
       isRemoteSetPlaying = true
       try {
-        player.play()
+        const result = player.play()
+        if(result?.catch) {
+          result.catch(() => {
+            isRemoteSetPlaying = false
+            pageData.needsPlaybackResume = true
+          })
+        }
       }
       catch(err) {
+        isRemoteSetPlaying = false
+        pageData.needsPlaybackResume = true
         console.log("播放失败.....")
         console.log(err)
       }
@@ -656,7 +1010,7 @@ async function checkIsPlaying() {
   await util.waitMilli(1500)
   const rPlayStatus = latestStatus.playStatus
   if(rPlayStatus === "PLAYING" && playStatus === "PAUSED") {
-    handleAutoPlayPolicy()
+    pageData.needsPlaybackResume = true
   }
 }
 
@@ -712,4 +1066,14 @@ async function leaveRoom(sendLeave: boolean = true) {
   if(!sendLeave) return
   // 去发送离开房间的请求
   await request_leave(pageData.roomId, nickName)
+}
+
+function receiveNewContent(content: ContentData, roomStatus: RoomStatus, notes: PageData["notes"]) {
+  pageData.content = content
+  pageData.notes = notes
+  pageData.showMoreBox = handleShowMoreBox(content)
+  pageData.pauseNotice = ""
+  latestStatus = roomStatus
+  createPlayer()
+  shareData(content, roomStatus.playStatus, nickName)
 }

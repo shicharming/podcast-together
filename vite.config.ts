@@ -8,7 +8,8 @@ const { version } = require("./package.json")
 const projectRoot = __dirname
 
 // https://vitejs.dev/config/
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  const isProduction = mode === "production"
   return {
     plugins: [
       vue(),
@@ -31,13 +32,27 @@ export default defineConfig(() => {
       })
     ],
     server: {
-      host: "0.0.0.0"
+      host: "0.0.0.0",
+      // Dev-only: proxy /pt-api/* to the local wrangler dev backend so the
+      // https frontend talks to it same-origin (no mixed-content / CORS).
+      // Set VITE_API_URL=/pt-api and VITE_WEBSOCKET_URL=/pt-api/ws in .env.local.
+      proxy: {
+        "/pt-api": {
+          target: "http://127.0.0.1:8787",
+          changeOrigin: true,
+          ws: true,
+          rewrite: (p) => p.replace(/^\/pt-api/, ""),
+        },
+      },
     },
     resolve: {
       alias: {
         "@": resolve(projectRoot, "src"),
       }
     },
+    esbuild: isProduction ? {
+      drop: ["console", "debugger"]
+    } : undefined,
     define: {
       "PT_ENV": {
         "version": version,

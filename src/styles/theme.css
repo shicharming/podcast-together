@@ -1,53 +1,54 @@
-
-/** 原理
-* 都会读到 .classic-theme
-* 当深色模式的时候 再追加读取 .dark-theme 此时 .classic-theme 仍然会读取到
-*/
 .classic-theme {
   transition: color .45s, background-color .45s;
-  --bg-color: #ffffff;
-  --card-color: #f9f9f9;
-  --text-color: #333;
-  --note-color: #bababa;
-  --desc-color: #606060;
-  --tap-color: #4269a5;
-  --theme-a: #fadfb2;
+  --bg-color: #fbfcfd;
+  --card-color: #ffffff;
+  --text-color: #17212b;
+  --note-color: #7d8a95;
+  --desc-color: #40515f;
+  --tap-color: #2f6f8f;
+  --accent-color: #2f6f8f;
+  --accent-warm: #b58a52;
+  --line-color: #dce4ea;
+  --meter-color: #9bb6c6;
+  --tag-bg: #edf4f7;
+  --tag-text: #2f6077;
+  --theme-a: #d8b06d;
 
-  /** 主按钮 */
-  --main-btn-bg: #181818;
-  --main-btn-text: #eee;
-  --hover-btn-bg: #393939;
+  --main-btn-bg: #17212b;
+  --main-btn-text: #ffffff;
+  --hover-btn-bg: #2f3c49;
 
-  /** 副按钮 */
-  --other-btn-bg: #f3f3f3;
-  --other-btn-text: #565656;
-  --other-btn-hover: #e6e6e6;
+  --other-btn-bg: #eef3f6;
+  --other-btn-text: #263743;
+  --other-btn-hover: #e1e9ee;
 
-  /** 一些比较少用的字段 */
-  --more-btn-bg: linear-gradient(0deg, rgba(249, 249, 249, 1) 60%, rgba(249, 249, 249, .2) 100%);
+  --more-btn-bg: linear-gradient(0deg, rgba(255, 255, 255, 1) 60%, rgba(255, 255, 255, .2) 100%);
 }
 
 .dark-theme {
-  --bg-color: #181818;
-  --card-color: #282828;
-  --text-color: #eee;
-  --note-color: #787878;
-  --desc-color: #c0c0c0;
-  --tap-color: #4269a5;
-  --theme-a: #f1c680;
+  --bg-color: #101820;
+  --card-color: #17212b;
+  --text-color: #f3f7fa;
+  --note-color: #8c9aa6;
+  --desc-color: #c5d0d8;
+  --tap-color: #7ab0ca;
+  --accent-color: #7ab0ca;
+  --accent-warm: #c9a56f;
+  --line-color: #2b3a46;
+  --meter-color: #4d7286;
+  --tag-bg: #1e313d;
+  --tag-text: #a9cedf;
+  --theme-a: #c9a56f;
 
-  /** 主按钮 */
-  --main-btn-bg: #ddd;
-  --main-btn-text: #181818;
-  --hover-btn-bg: #bbb;
+  --main-btn-bg: #f3f7fa;
+  --main-btn-text: #101820;
+  --hover-btn-bg: #d9e4ea;
 
-  /** 副按钮 */
-  --other-btn-bg: #404040;
-  --other-btn-text: #c0c0c0;
-  --other-btn-hover: #606060;
+  --other-btn-bg: #1d2a35;
+  --other-btn-text: #d5e0e7;
+  --other-btn-hover: #263746;
 
-  /** 一些比较少用的字段 */
-  --more-btn-bg: linear-gradient(0deg, rgba(40, 40, 40, 1) 50%, rgba(40, 40, 40, .2) 100%);
+  --more-btn-bg: linear-gradient(0deg, rgba(23, 33, 43, 1) 50%, rgba(23, 33, 43, .2) 100%);
 }
 
 p::selection {

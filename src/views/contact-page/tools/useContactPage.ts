@@ -19,14 +19,14 @@ const onTapWeChat = () => {
   }
 
   imgData.imgUrl = images.WECOM_GROUP_QR
-  imgData.tip = `请使用微信扫码`
+  imgData.tip = "请使用微信扫码联系"
   imgData.show = true
 }
 
 const onTapFeishu = () => {
   const feishuLink = _env.CONTACT_FEISHU
   if(!feishuLink) {
-    console.log("尚未配置 feishu link..........")
+    console.log("Feishu contact link is not configured.")
     return
   }
   const cha = ptApi.getCharacteristic()
@@ -36,22 +36,21 @@ const onTapFeishu = () => {
   }
 
   imgData.imgUrl = images.FEISHU_QR
-  imgData.tip = `请使用飞书扫码`
+  imgData.tip = "请使用飞书扫码联系"
   imgData.show = true
 }
 
 const onTapEmail = () => {
   const email = _env.CONTACT_EMAIL
   if(!email) {
-    console.log("尚未配置 email..........")
+    console.log("Contact email is not configured.")
     return
   }
   ptApi.copyToClipboard(email)
-  cui.showModal({ title: "已复制到剪贴板", content: "等待你的来信！", showCancel: false })
+  cui.showModal({ title: "邮箱已复制", content: "可以直接粘贴到邮件客户端。", showCancel: false })
 }
 
 const onTapClosePreview = () => {
-  console.log("onTapClosePreview...........")
   imgData.show = false
 }
 

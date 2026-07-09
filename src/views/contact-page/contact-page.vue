@@ -1,136 +1,124 @@
 <script setup lang="ts">
-import { useTheme } from '../../hooks/useTheme';
 import images from '../../images';
 import { useContactPage } from './tools/useContactPage';
-let { theme } = useTheme()
 
-let {
-  onTapWeChat,
-  onTapFeishu,
+const {
   onTapEmail,
   onTapClosePreview,
   imgData,
 } = useContactPage()
 
 const doNothing = (e: Event) => {
-  console.log("doNothing............")
   e.stopPropagation()
 }
-
 </script>
+
 <template>
-<div class="page">
-  <div class="page-container">
+<main class="contact-page">
+  <section class="contact-shell">
+    <p class="eyebrow">Contact</p>
+    <h1>商务联系</h1>
+    <p class="intro">
+      欢迎联系我讨论产品合作、内容共听场景和定制部署需求。
+    </p>
 
-    <h1>联系我</h1>
-
-    <!-- 微信群 -->
-    <div class="contact-item" @click="onTapWeChat">
-      <div class="div-bg-img ci-img ci-img_wechat"></div>
-      <div class="ci-text">
-        <span>微信群</span>
-      </div>
-    </div>
-
-    <!-- Github Discussions -->
-    <a class="contact-item" href="https://github.com/yenche123/podcast-together/discussions" target="_blank">
-      <div class="div-bg-img ci-img ci-img_github"></div>
-      <div class="ci-text">
-        <span>Github 讨论区</span>
-      </div>
-    </a>
-    
-    <!-- Feishu -->
-    <div class="contact-item" @click="onTapFeishu">
-      <div class="div-bg-img ci-img ci-img_feishu"></div>
-      <div class="ci-text">
-        <span>我的飞书</span>
-      </div>
-    </div>
-
-    <!-- Email -->
-    <div class="contact-item" @click="onTapEmail">
+    <button class="contact-item" @click="onTapEmail">
       <div class="div-bg-img ci-img ci-img_email"></div>
       <div class="ci-text">
-        <span>我的邮箱</span>
+        <span>邮件</span>
+        <strong>适合正式合作与需求说明</strong>
       </div>
-    </div>
-  </div>
-  <div class="page-btns-virtual"></div>
-</div>
+    </button>
 
-<div class="preview-container" 
+    <a class="contact-item" href="https://jiaminshi.com" target="_blank">
+      <div class="site-mark">JS</div>
+      <div class="ci-text">
+        <span>主站</span>
+        <strong>了解更多项目与背景</strong>
+      </div>
+    </a>
+  </section>
+</main>
+
+<div class="preview-container"
   :class="{ 'preview-container_show': imgData.show }"
   @click="onTapClosePreview"
 >
-  <div class="preview-box"
-    @click="doNothing"
-  >
+  <div class="preview-box" @click="doNothing">
     <div class="pb-img-box">
       <img :src="imgData.imgUrl" class="preview-img" />
     </div>
     <p v-if="imgData.tip" class="preview-p">{{ imgData.tip }}</p>
   </div>
 </div>
-
 </template>
+
 <style scoped lang="scss">
-.page {
+.contact-page {
   min-height: 100vh;
+  box-sizing: border-box;
+  padding: 68px 20px 34px;
+  display: flex;
+  justify-content: center;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(233, 239, 244, .5) 100%),
+    var(--bg-color);
+}
 
-  .page-container {
-    padding-top: 60px;
-  }
+.contact-shell {
+  width: 100%;
+  max-width: 560px;
+}
 
-  h1 {
-    margin-block-start: 0;
-    margin-block-end: 20px;
-    text-align: center;
-    color: var(--text-color);
-    font-size: 32px;
-  }
+.eyebrow {
+  margin: 0 0 14px;
+  color: var(--accent-color);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
 
-  .page-btns-virtual {
-    height: 100px;
-  }
+h1 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: clamp(34px, 7vw, 54px);
+  line-height: 1.08;
+}
+
+.intro {
+  margin: 18px 0 34px;
+  color: var(--desc-color);
+  font-size: 16px;
+  line-height: 1.8;
 }
 
 .contact-item {
   width: 100%;
+  min-height: 112px;
   box-sizing: border-box;
-  height: 150px;
-  padding: 10px 10%;
-  margin-bottom: 15px;
-  position: relative;
+  padding: 18px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line-color);
+  border-radius: 8px;
   background-color: var(--card-color);
-  line-height: 1.5;
-  border-radius: 20px;
   display: flex;
   align-items: center;
-  transition: .15s;
+  text-align: left;
   cursor: pointer;
+  transition: border-color .15s, background-color .15s, transform .15s;
 
-  &:hover, &:active {
+  &:hover,
+  &:active {
+    border-color: var(--accent-color);
     background-color: var(--other-btn-hover);
   }
 
   .ci-img {
-    width: 50px;
-    height: 50px;
-    margin-right: 10%;
-
-    &.ci-img_wechat {
-      background-image: v-bind("'url(' + images.WECHAT + ')'");
-    }
-
-    &.ci-img_github {
-      background-size: 90% 90%;
-      background-image: v-bind("'url(' + (theme === 'light' ? images.GITHUB : images.GITHUB_DM) + ')'");
-    }
-
-    &.ci-img_feishu {
-      background-image: v-bind("'url(' + images.FEISHU + ')'");
-    }
+    width: 46px;
+    height: 46px;
+    margin-right: 18px;
+    flex-shrink: 0;
 
     &.ci-img_email {
       background-size: 90% 90%;
@@ -139,14 +127,40 @@ const doNothing = (e: Event) => {
   }
 
   .ci-text {
-    font-size: var(--title-font);
-    color: var(--desc-color);
-    font-weight: 700;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
+  .ci-text span {
+    color: var(--text-color);
+    font-size: 18px;
+    font-weight: 800;
+  }
+
+  .ci-text strong {
+    color: var(--note-color);
+    font-size: 14px;
+    font-weight: 600;
+  }
 }
 
-/** 默认关闭 */
+.site-mark {
+  width: 46px;
+  height: 46px;
+  margin-right: 18px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background-color: var(--main-btn-bg);
+  color: var(--main-btn-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+
 .preview-container {
   width: 100vw;
   height: 100vh;
@@ -160,7 +174,7 @@ const doNothing = (e: Event) => {
   transition: all 0.3s;
   opacity: 0;
   visibility: hidden;
-  background-color: rgba(0,0,0,.75);
+  background-color: rgba(10, 20, 28, .78);
 }
 
 .preview-container_show {
@@ -171,8 +185,8 @@ const doNothing = (e: Event) => {
 .preview-box {
   width: 70%;
   max-width: 250px;
-  padding: 15px 10px;
-  border-radius: 10px;
+  padding: 16px;
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -201,6 +215,4 @@ const doNothing = (e: Event) => {
     color: var(--note-color);
   }
 }
-
-
 </style>
