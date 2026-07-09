@@ -300,7 +300,7 @@ onUnmounted(() => {
       />
 
       <!-- 一起听（播客）视图 -->
-      <div v-show="activeTab === 'listen'">
+      <div v-show="activeTab === 'listen'" class="listen-view">
 
       <!-- 播放器 -->
       <div v-if="pageData.needsPlaybackResume" class="resume-banner">
@@ -435,7 +435,7 @@ onUnmounted(() => {
       </div>
 
       <!-- 一起听（续）：单集信息 -->
-      <div v-show="activeTab === 'listen'">
+      <div v-show="activeTab === 'listen'" class="listen-view">
       <div v-if="pageData.content?.title"
         class="room-title-desc"
       >
@@ -512,6 +512,12 @@ onUnmounted(() => {
 
 .page {
   min-height: 100vh;
+}
+
+/* v-show grouping wrapper only; must not create a flex box, otherwise the
+   listen content collapses to content width inside the centered flex column. */
+.listen-view {
+  display: contents;
 }
 
 .room-tabs {
