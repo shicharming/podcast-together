@@ -88,6 +88,9 @@ export const useLocale = () => {
     entered: isJa ? "に入室" : isZh ? "进入" : " joined",
     leave: isJa ? "退出" : isZh ? "离开" : "Leave",
     share: isJa ? "共有" : isZh ? "分享" : "Share",
+    createFocusRoom: isJa ? "集中ルームを作る（音声なし）" : isZh ? "创建专注房间（无需播客）" : "Start a focus room (no podcast)",
+    tabListen: isJa ? "一緒に聴く" : isZh ? "一起听" : "Listen",
+    tabStudy: isJa ? "一緒に集中" : isZh ? "一起学" : "Study",
   }))
 
   return { locale, t }

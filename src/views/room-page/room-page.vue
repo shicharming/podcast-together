@@ -281,8 +281,8 @@ onUnmounted(() => {
 
       <!-- 一起听 / 一起学 切换 -->
       <div class="room-tabs">
-        <button class="room-tab" :class="{ 'room-tab_on': activeTab === 'listen' }" @click="activeTab = 'listen'">🎧 一起听</button>
-        <button class="room-tab" :class="{ 'room-tab_on': activeTab === 'study' }" @click="activeTab = 'study'">📚 一起学</button>
+        <button class="room-tab" :class="{ 'room-tab_on': activeTab === 'listen' }" @click="activeTab = 'listen'">🎧 {{ t.tabListen }}</button>
+        <button class="room-tab" :class="{ 'room-tab_on': activeTab === 'study' }" @click="activeTab = 'study'">📚 {{ t.tabStudy }}</button>
       </div>
 
       <!-- Study Mode 面板 -->

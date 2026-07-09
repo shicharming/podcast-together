@@ -54,6 +54,17 @@ const onUrlFocus = () => {
   if(isDummyUrl(urlValue.value)) urlValue.value = ""
 }
 
+// 创建一个无播客的纯专注房间（直接进 Study Mode），只需要昵称
+const canCreateFocus = computed(() => nameValue.value.trim().length >= 1)
+const onTapFocusRoom = () => {
+  if(!canCreateFocus.value) {
+    inputEl.value?.focus()
+    return
+  }
+  saveName()
+  cp.createFocusRoom(router, route)
+}
+
 const tryUseShareTarget = () => {
   const { title, text, link } = route.query
   if(!(title || text || link)) return
@@ -115,6 +126,8 @@ onActivated(() => {
         <pt-button class="index-main-btn" :text="t.createRoom" @click="onTapCreateBtn" :disabled="!canSubmit"></pt-button>
         <p class="remember-hint">{{ t.rememberHint }}</p>
       </form>
+
+      <pt-button class="index-focus-btn" type="other" :text="t.createFocusRoom" @click="onTapFocusRoom" :disabled="!canCreateFocus"></pt-button>
 
       <div class="support-row" :aria-label="t.supported">
         <span>{{ t.supported }}</span>
@@ -280,6 +293,10 @@ input::-webkit-input-placeholder {
 .index-main-btn {
   grid-column: 1 / -1;
   margin-top: 2px;
+}
+
+.index-focus-btn {
+  margin-top: 14px;
 }
 
 .remember-hint {
