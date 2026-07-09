@@ -91,6 +91,38 @@ export const useLocale = () => {
     createFocusRoom: isJa ? "集中ルームを作る（音声なし）" : isZh ? "创建专注房间（无需播客）" : "Start a focus room (no podcast)",
     tabListen: isJa ? "一緒に聴く" : isZh ? "一起听" : "Listen",
     tabStudy: isJa ? "一緒に集中" : isZh ? "一起学" : "Study",
+    // ---- Study Mode (Pomodoro + todos + status) ----
+    phaseFocus: isJa ? "集中" : isZh ? "专注" : "Focus",
+    phaseShortBreak: isJa ? "小休憩" : isZh ? "短休息" : "Short break",
+    phaseLongBreak: isJa ? "長い休憩" : isZh ? "长休息" : "Long break",
+    timerStart: isJa ? "開始" : isZh ? "开始" : "Start",
+    timerPause: isJa ? "一時停止" : isZh ? "暂停" : "Pause",
+    timerResume: isJa ? "再開" : isZh ? "继续" : "Resume",
+    timerReset: isJa ? "リセット" : isZh ? "重置" : "Reset",
+    timerSettings: isJa ? "設定" : isZh ? "设置" : "Settings",
+    timerSave: isJa ? "保存" : isZh ? "保存" : "Save",
+    timerNextFocus: isJa ? "集中を始める" : isZh ? "开始专注" : "Start focus",
+    timerNextShort: isJa ? "小休憩を始める" : isZh ? "开始短休息" : "Start short break",
+    timerNextLong: isJa ? "長い休憩を始める" : isZh ? "开始长休息" : "Start long break",
+    timerNextGeneric: isJa ? "次へ" : isZh ? "下一阶段" : "Next",
+    timerNotifyTitle: isJa ? "ポモドーロ" : isZh ? "番茄钟" : "Pomodoro",
+    timerNotifyBody: isJa
+      ? "{phase}が終わりました。「{next}」で続けましょう"
+      : isZh
+        ? "{phase}结束啦，点「{next}」继续"
+        : "{phase} finished — tap \"{next}\" to continue.",
+    timerCfgFocus: isJa ? "集中" : isZh ? "专注" : "Focus",
+    timerCfgShort: isJa ? "小休憩" : isZh ? "短休" : "Short",
+    timerCfgLong: isJa ? "長休憩" : isZh ? "长休" : "Long",
+    studyMyStatus: isJa ? "自分の状態" : isZh ? "我的状态" : "My status",
+    studyMe: isJa ? "（自分）" : isZh ? "（我）" : " (me)",
+    studyNoTodo: isJa ? "まだ todo がありません" : isZh ? "还没有 todo" : "No todos yet",
+    studyTodoPlaceholder: isJa ? "やることを追加…" : isZh ? "加一个要做的事…" : "Add a task...",
+    studyStatusWorking: isJa ? "集中中" : isZh ? "专注中" : "Working",
+    studyStatusStuck: isJa ? "詰まった" : isZh ? "卡住了" : "Stuck",
+    studyStatusBreak: isJa ? "休憩" : isZh ? "休息" : "Break",
+    studyStatusAway: isJa ? "離席" : isZh ? "离开" : "Away",
+    studyStatusDone: isJa ? "完了" : isZh ? "完成" : "Done",
   }))
 
   return { locale, t }

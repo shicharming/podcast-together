@@ -5,6 +5,7 @@
  */
 import { computed, onMounted, onUnmounted, ref } from "vue"
 import type { StudyState, StudyStatus, PageParticipant } from "../../type/type-room-page"
+import { useLocale } from "../../hooks/useLocale"
 
 const props = defineProps<{
   study?: StudyState
@@ -21,20 +22,16 @@ const emit = defineEmits<{
   (e: "reaction", emoji: string): void
 }>()
 
-const STATUS_OPTIONS: { key: StudyStatus; label: string; emoji: string }[] = [
-  { key: "working", label: "专注中", emoji: "💻" },
-  { key: "stuck", label: "卡住了", emoji: "😵" },
-  { key: "break", label: "休息", emoji: "☕" },
-  { key: "away", label: "离开", emoji: "🚶" },
-  { key: "done", label: "完成", emoji: "✅" },
-]
-const STATUS_MAP = Object.fromEntries(STATUS_OPTIONS.map(s => [s.key, s]))
+const { t } = useLocale()
 
-const PHASE_LABEL: Record<string, string> = {
-  focus: "专注",
-  short_break: "短休息",
-  long_break: "长休息",
-}
+const STATUS_OPTIONS = computed<{ key: StudyStatus; label: string; emoji: string }[]>(() => [
+  { key: "working", label: t.value.studyStatusWorking, emoji: "💻" },
+  { key: "stuck", label: t.value.studyStatusStuck, emoji: "😵" },
+  { key: "break", label: t.value.studyStatusBreak, emoji: "☕" },
+  { key: "away", label: t.value.studyStatusAway, emoji: "🚶" },
+  { key: "done", label: t.value.studyStatusDone, emoji: "✅" },
+])
+const STATUS_MAP = computed(() => Object.fromEntries(STATUS_OPTIONS.value.map(s => [s.key, s])))
 
 // 500ms 心跳，驱动倒计时重算
 const nowTick = ref(0)
@@ -55,25 +52,30 @@ const mmss = computed(() => {
   return `${m < 10 ? "0" + m : m}:${s < 10 ? "0" + s : s}`
 })
 
-const phaseName = computed(() => (timer.value ? PHASE_LABEL[timer.value.phase] ?? timer.value.phase : "专注"))
+const phaseName = computed(() => {
+  const p = timer.value?.phase
+  if (p === "short_break") return t.value.phaseShortBreak
+  if (p === "long_break") return t.value.phaseLongBreak
+  return t.value.phaseFocus
+})
 const isRunning = computed(() => !!timer.value?.isRunning)
 const finished = computed(() => remainingMs.value <= 0)
 
 const roundDots = computed(() => {
-  const t = timer.value
-  if (!t) return { total: 4, filled: 0 }
-  const total = t.config.roundsBeforeLong
-  return { total, filled: t.completedFocusRounds % total }
+  const tm = timer.value
+  if (!tm) return { total: 4, filled: 0 }
+  const total = tm.config.roundsBeforeLong
+  return { total, filled: tm.completedFocusRounds % total }
 })
 
 const nextPhaseLabel = computed(() => {
-  const t = timer.value
-  if (!t) return "下一阶段"
-  if (t.phase === "focus") {
-    const willLong = (t.completedFocusRounds + 1) % t.config.roundsBeforeLong === 0
-    return willLong ? "开始长休息" : "开始短休息"
+  const tm = timer.value
+  if (!tm) return t.value.timerNextGeneric
+  if (tm.phase === "focus") {
+    const willLong = (tm.completedFocusRounds + 1) % tm.config.roundsBeforeLong === 0
+    return willLong ? t.value.timerNextLong : t.value.timerNextShort
   }
-  return "开始专注"
+  return t.value.timerNextFocus
 })
 
 // todos / status，按 guestId
@@ -112,14 +114,17 @@ const onSetStatus = (status: StudyStatus) => emit("status", status)
 
 // 阶段结束时的浏览器通知（每个阶段只提醒一次）
 function maybeNotify() {
-  const t = timer.value
-  if (!t || !t.isRunning) return
+  const tm = timer.value
+  if (!tm || !tm.isRunning) return
   if (remainingMs.value > 0) return
-  if (lastNotifiedStart === t.startStamp) return
-  lastNotifiedStart = t.startStamp
+  if (lastNotifiedStart === tm.startStamp) return
+  lastNotifiedStart = tm.startStamp
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
     try {
-      new Notification("番茄钟", { body: `${phaseName.value}结束啦，点「${nextPhaseLabel.value}」继续` })
+      const body = t.value.timerNotifyBody
+        .replace("{phase}", phaseName.value)
+        .replace("{next}", nextPhaseLabel.value)
+      new Notification(t.value.timerNotifyTitle, { body })
     } catch {}
   }
 }
@@ -153,16 +158,16 @@ onUnmounted(() => {
         ></span>
       </div>
       <div class="timer-controls">
-        <button class="tc-btn tc-main" @click="onToggleTimer">{{ isRunning ? '暂停' : (finished ? '继续' : '开始') }}</button>
-        <button class="tc-btn" @click="onReset">重置</button>
+        <button class="tc-btn tc-main" @click="onToggleTimer">{{ isRunning ? t.timerPause : (finished ? t.timerResume : t.timerStart) }}</button>
+        <button class="tc-btn" @click="onReset">{{ t.timerReset }}</button>
         <button class="tc-btn tc-next" @click="onSkip">{{ nextPhaseLabel }}</button>
-        <button class="tc-btn tc-ghost" @click="showSettings = !showSettings">设置</button>
+        <button class="tc-btn tc-ghost" @click="showSettings = !showSettings">{{ t.timerSettings }}</button>
       </div>
       <div v-if="showSettings" class="timer-settings">
-        <label>专注<input type="number" v-model.number="cfgFocus" min="1" max="180" /></label>
-        <label>短休<input type="number" v-model.number="cfgShort" min="1" max="60" /></label>
-        <label>长休<input type="number" v-model.number="cfgLong" min="1" max="60" /></label>
-        <button class="tc-btn tc-main" @click="onSaveConfig">保存</button>
+        <label>{{ t.timerCfgFocus }}<input type="number" v-model.number="cfgFocus" min="1" max="180" /></label>
+        <label>{{ t.timerCfgShort }}<input type="number" v-model.number="cfgShort" min="1" max="60" /></label>
+        <label>{{ t.timerCfgLong }}<input type="number" v-model.number="cfgLong" min="1" max="60" /></label>
+        <button class="tc-btn tc-main" @click="onSaveConfig">{{ t.timerSave }}</button>
       </div>
     </div>
 
@@ -173,7 +178,7 @@ onUnmounted(() => {
 
     <!-- 我的状态 -->
     <div class="my-status">
-      <span class="ms-label">我的状态</span>
+      <span class="ms-label">{{ t.studyMyStatus }}</span>
       <button
         v-for="opt in STATUS_OPTIONS"
         :key="opt.key"
@@ -187,7 +192,7 @@ onUnmounted(() => {
     <div class="study-cards">
       <div class="study-card" v-for="p in participants" :key="p.guestId" :class="{ 'study-card_me': p.guestId === myGuestId }">
         <div class="sc-head">
-          <span class="sc-name">{{ p.nickName }}<span v-if="p.guestId === myGuestId" class="sc-me">（我）</span></span>
+          <span class="sc-name">{{ p.nickName }}<span v-if="p.guestId === myGuestId" class="sc-me">{{ t.studyMe }}</span></span>
           <span class="sc-status">{{ STATUS_MAP[statusFor(p.guestId)]?.emoji }} {{ STATUS_MAP[statusFor(p.guestId)]?.label }}</span>
         </div>
 
@@ -203,7 +208,7 @@ onUnmounted(() => {
               <span class="sc-todo-text">{{ item.text }}</span>
             </template>
           </li>
-          <li v-if="!todosFor(p.guestId).length" class="sc-empty">还没有 todo</li>
+          <li v-if="!todosFor(p.guestId).length" class="sc-empty">{{ t.studyNoTodo }}</li>
         </ul>
 
         <div v-if="p.guestId === myGuestId" class="sc-add">
@@ -211,7 +216,7 @@ onUnmounted(() => {
             v-model="newTodo"
             type="text"
             maxlength="200"
-            placeholder="加一个要做的事…"
+            :placeholder="t.studyTodoPlaceholder"
             @keyup.enter="onAddTodo"
           />
           <button class="tc-btn tc-main" @click="onAddTodo">＋</button>
