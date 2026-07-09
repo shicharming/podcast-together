@@ -44,7 +44,8 @@ export const showParticipants = (participants: Participant[], myGuestId: string)
  * 是否要有“展示更多”的按钮
  * 策略: 潜在行数大于等于 5 行，肯定有该按钮，但在 3 行时就截断
  */
-export const handleShowMoreBox = (content: ContentData): boolean => {
+export const handleShowMoreBox = (content?: ContentData): boolean => {
+  if(!content) return false
   const { title, description } = content
   if(!title || !description) return false
 
