@@ -1,0 +1,47 @@
+name: Deploy frontend to Cloudflare Pages
+
+# Auto-build + deploy the frontend to the "podcast-together" Pages project
+# (listen.jiaminshi.com) on every push to main. The Pages project is a
+# direct-upload project, so this workflow replaces the manual
+# `wrangler pages deploy` step.
+#
+# Requires two GitHub repo secrets:
+#   CLOUDFLARE_API_TOKEN  - a token with the "Cloudflare Pages: Edit" permission
+#   CLOUDFLARE_ACCOUNT_ID - 623cff9a05d824b68112f67bf6a48a91
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "workers/**"
+      - "**.md"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=podcast-together --branch=main
