@@ -13,13 +13,6 @@
   "engines": {
     "node": ">=20"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "core-js",
-      "esbuild"
-    ]
-  },
   "dependencies": {
     "nanoid": "^5.0.7",
     "pinia": "^3.0.3",

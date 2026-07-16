@@ -29,6 +29,7 @@ export function initWebSocket(callbacks: WsCallbacks, roomId?: string) {
     console.log("ws opened.........")
     console.log(socket)
     console.log(" ")
+    callbacks.onopen && callbacks.onopen(socket)
   }
 
   ws.onmessage = (res) => {
@@ -50,12 +51,15 @@ export function initWebSocket(callbacks: WsCallbacks, roomId?: string) {
     console.log("ws.onerror.......")
     console.log(res)
     console.log(" ")
+    callbacks.onerror && callbacks.onerror(res)
   }
   return ws
 }
 
 
 export function sendToWebSocket(ws: WebSocket | null, obj: Record<string, any>): boolean {
+  if(!obj["x-pt-version"]) obj["x-pt-version"] = PT_ENV.version
+  if(!obj["x-pt-client"]) obj["x-pt-client"] = PT_ENV.client
   let msg: string
   try {
     msg = JSON.stringify(obj)

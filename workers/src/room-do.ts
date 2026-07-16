@@ -19,6 +19,7 @@ import type {
   TimerConfig,
   TimerPhase,
   TodoItem,
+  PlayerAck,
 } from "./types"
 
 const MAX_ROOM_NUM = 15
@@ -161,6 +162,7 @@ export class RoomDO {
       speedRate: "1",
       contentStamp: 0,
       operateStamp: now,
+      statusSeq: 0,
       operator: "",
       createStamp: now,
       expiresAt: now + ROOM_TTL_MS,
@@ -169,6 +171,8 @@ export class RoomDO {
       notes: [],
       config: { ...defaultRoomCfg },
       study: defaultStudy(),
+      // A podcast-less focus room opens straight into study mode for everyone.
+      activeMode: roomData ? "listen" : "study",
     }
     await this.save()
     await this.scheduleAlarm()
@@ -181,6 +185,7 @@ export class RoomDO {
       operator: "",
       contentStamp: 0,
       operateStamp: now,
+      statusSeq: 0,
       participants: [],
       everyoneCanOperatePlayer: this.room.config.everyoneCanOperatePlayer,
       study: this.room.study,
@@ -215,11 +220,13 @@ export class RoomDO {
       me.enterStamp = now
       me.heartbeatStamp = now
       if (ua) me.userAgent = ua
+      me.clientVersion = this.normalizeClientVersion(body["x-pt-version"])
       this.touchParticipantState(me, clientState, now)
     } else {
       if (participants.length >= MAX_ROOM_NUM) return { code: "R0001" }
       guestId = this.generateGuestId(participants)
       me = { nickName, enterStamp: now, heartbeatStamp: now, userAgent: ua, guestId, nonce: clientId }
+      me.clientVersion = this.normalizeClientVersion(body["x-pt-version"])
       this.touchParticipantState(me, clientState, now)
       participants.push(me)
     }
@@ -252,6 +259,7 @@ export class RoomDO {
     if (!me) return { code: "E4003" }
     me.heartbeatStamp = now
     me.nickName = nickName
+    me.clientVersion = this.normalizeClientVersion(body["x-pt-version"])
     this.touchParticipantState(me, this.normalizeClientState(body.clientState), now)
 
     participants = participants.filter((v) => now - v.heartbeatStamp < KICK_MS)
@@ -294,6 +302,8 @@ export class RoomDO {
       clientState: v.clientState,
       lastActiveStamp: v.lastActiveStamp,
       lastVisibleStamp: v.lastVisibleStamp,
+      lastPlayerAck: v.lastPlayerAck,
+      clientVersion: v.clientVersion,
     }))
     return {
       roomId: room.roomId,
@@ -303,6 +313,7 @@ export class RoomDO {
       operator: room.operator,
       contentStamp: room.contentStamp,
       operateStamp: room.operateStamp,
+      statusSeq: room.statusSeq ?? 0,
       participants: pClients,
       everyoneCanOperatePlayer: room.config.everyoneCanOperatePlayer,
       notes: room.notes ?? [],
@@ -332,6 +343,12 @@ export class RoomDO {
     return CLIENT_STATES.has(value as ClientState) ? (value as ClientState) : "visible"
   }
 
+  private normalizeClientVersion(value: unknown): string | undefined {
+    if (typeof value !== "string") return undefined
+    const v = value.trim().slice(0, 40)
+    return v || undefined
+  }
+
   private touchParticipantState(participant: Participant, clientState: ClientState, now: number): void {
     participant.clientState = clientState
     if (clientState === "visible") {
@@ -346,6 +363,7 @@ export class RoomDO {
   private pausePlayer(room: Room, operator = ""): void {
     if (room.playStatus === "PAUSED") return
     room.playStatus = "PAUSED"
+    room.statusSeq = (room.statusSeq ?? 0) + 1
     const participants = room.participants ?? []
     let speedRateNum = Number(room.speedRate)
     if (isNaN(speedRateNum) || speedRateNum >= 1.71) speedRateNum = 1
@@ -375,6 +393,7 @@ export class RoomDO {
     const op = req.operateType
     if (op === "FIRST_SEND") return this.wsFirstSend(ws, req)
     if (op === "SET_PLAYER") return this.wsSetPlayer(ws, req)
+    if (op === "PLAYER_ACK") return this.wsPlayerAck(ws, req)
     if (op === "HEARTBEAT") return ws.send(JSON.stringify({ responseType: "HEARTBEAT" }))
     if (op === "SEND_REACTION") return this.wsReaction(ws, req)
     if (op === "ADD_NOTE") return this.wsAddNote(ws, req)
@@ -382,6 +401,7 @@ export class RoomDO {
     if (op === "TIMER_SET") return this.wsTimerSet(ws, req)
     if (op === "TODO_OP") return this.wsTodoOp(ws, req)
     if (op === "SET_STATUS") return this.wsSetStatus(ws, req)
+    if (op === "SET_MODE") return this.wsSetMode(ws, req)
   }
 
   async webSocketClose(ws: WebSocket) {
@@ -428,6 +448,7 @@ export class RoomDO {
     ws.send(
       JSON.stringify({
         responseType: "NEW_STATUS",
+        participants: this.buildRoRes(room).participants,
         roomStatus: {
           roomId: room.roomId,
           playStatus: room.playStatus,
@@ -435,6 +456,7 @@ export class RoomDO {
           operator: room.operator,
           contentStamp: room.contentStamp,
           operateStamp: room.operateStamp,
+          statusSeq: room.statusSeq ?? 0,
           everyoneCanOperatePlayer: room.config.everyoneCanOperatePlayer,
           reason: room.pauseReason,
         },
@@ -446,6 +468,8 @@ export class RoomDO {
     }
     // Send current study state so a joiner / refresher is in sync.
     ws.send(JSON.stringify({ responseType: "STUDY_STATE", study: this.ensureStudy(room) }))
+    // Send the shared listen/study tab so a joiner lands on the same view.
+    ws.send(JSON.stringify({ responseType: "MODE", mode: room.activeMode ?? "listen" }))
   }
 
   private async wsSetPlayer(ws: WebSocket, req: any) {
@@ -465,6 +489,7 @@ export class RoomDO {
     room.speedRate = req.speedRate
     room.contentStamp = req.contentStamp
     room.operateStamp = s1
+    room.statusSeq = (room.statusSeq ?? 0) + 1
     room.operator = guestId
     room.pauseReason = req.playStatus === "PAUSED" ? (req.reason || "") : ""
 
@@ -474,6 +499,7 @@ export class RoomDO {
       speedRate: room.speedRate,
       contentStamp: room.contentStamp,
       operateStamp: room.operateStamp,
+      statusSeq: room.statusSeq,
       operator: guestId,
       reason: room.pauseReason,
     }
@@ -483,7 +509,45 @@ export class RoomDO {
     }
     await this.save()
     await this.scheduleAlarm()
-    this.broadcast({ responseType: "NEW_STATUS", roomStatus })
+    this.broadcast({ responseType: "NEW_STATUS", roomStatus, participants: this.buildRoRes(room).participants })
+  }
+
+  private async wsPlayerAck(ws: WebSocket, req: any) {
+    const room = this.room
+    if (!room) return
+    const clientId = req["x-pt-local-id"]
+    const me = room.participants.find((v) => v.nonce === clientId)
+    if (!me) return
+
+    const statusSeq = Number(req.statusSeq)
+    if (!Number.isFinite(statusSeq)) return
+
+    const ack: PlayerAck = {
+      statusSeq,
+      applied: req.applied === true,
+      playStatus: req.playStatus === "PLAYING" || req.playStatus === "PAUSED" ? req.playStatus : undefined,
+      localContentStamp: typeof req.localContentStamp === "number" ? req.localContentStamp : undefined,
+      blockedReason: this.normalizeBlockedReason(req.blockedReason),
+      receivedAt: typeof req.receivedAt === "number" ? req.receivedAt : Date.now(),
+      appliedAt: typeof req.appliedAt === "number" ? req.appliedAt : Date.now(),
+    }
+
+    me.lastPlayerAck = ack
+    me.heartbeatStamp = Date.now()
+    me.clientVersion = this.normalizeClientVersion(req["x-pt-version"]) ?? me.clientVersion
+    await this.save()
+    this.broadcast({ responseType: "PLAYER_ACKS", participants: this.buildRoRes(room).participants })
+  }
+
+  private normalizeBlockedReason(value: unknown): PlayerAck["blockedReason"] {
+    if (
+      value === "autoplay" ||
+      value === "player_not_ready" ||
+      value === "permission" ||
+      value === "tab_hidden" ||
+      value === "unknown"
+    ) return value
+    return undefined
   }
 
   private async wsReaction(ws: WebSocket, req: any) {
@@ -556,6 +620,7 @@ export class RoomDO {
     room.speedRate = "1"
     room.contentStamp = 0
     room.operateStamp = now
+    room.statusSeq = (room.statusSeq ?? 0) + 1
     room.operator = guestId
     room.pauseReason = ""
     room.notes = []
@@ -566,6 +631,7 @@ export class RoomDO {
       speedRate: room.speedRate,
       contentStamp: room.contentStamp,
       operateStamp: room.operateStamp,
+      statusSeq: room.statusSeq,
       operator: guestId,
       everyoneCanOperatePlayer: room.config.everyoneCanOperatePlayer,
       reason: "",
@@ -578,6 +644,7 @@ export class RoomDO {
       content: room.content,
       notes: room.notes,
       roomStatus,
+      participants: this.buildRoRes(room).participants,
     })
   }
 
@@ -701,6 +768,18 @@ export class RoomDO {
     this.broadcastStudy(room)
   }
 
+  // Shared listen/study tab — open control, everyone follows the last switcher.
+  private async wsSetMode(ws: WebSocket, req: any) {
+    const room = this.room
+    if (!room) return
+    if (!this.operatorGuestId(req["x-pt-local-id"])) { try { ws.close() } catch {}; return }
+    const mode = req.mode
+    if (mode !== "listen" && mode !== "study") return
+    room.activeMode = mode
+    await this.save()
+    this.broadcast({ responseType: "MODE", mode })
+  }
+
   // ---------------- Alarm (room-clock) ----------------
 
   private async scheduleAlarm() {
@@ -737,8 +816,10 @@ export class RoomDO {
           operator: room.operator,
           contentStamp: room.contentStamp,
           operateStamp: room.operateStamp,
+          statusSeq: room.statusSeq ?? 0,
           everyoneCanOperatePlayer: room.config.everyoneCanOperatePlayer,
         },
+        participants: this.buildRoRes(room).participants,
       })
     } else if (after !== before) {
       await this.save()

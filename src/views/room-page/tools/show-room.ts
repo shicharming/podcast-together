@@ -3,7 +3,7 @@ import { PageParticipant } from "../../../type/type-room-page"
 import time from "../../../utils/time"
 import util from "../../../utils/util"
 
-export const showParticipants = (participants: Participant[], myGuestId: string) => {
+export const showParticipants = (participants: Participant[], myGuestId: string, statusSeq: number = 0) => {
   let list: PageParticipant[] = []
   if(participants.length < 1) return list
 
@@ -22,7 +22,11 @@ export const showParticipants = (participants: Participant[], myGuestId: string)
       clientState: v.clientState,
       lastActiveStamp: v.lastActiveStamp,
       lastVisibleStamp: v.lastVisibleStamp,
+      lastPlayerAck: v.lastPlayerAck,
+      clientVersion: v.clientVersion,
     }
+    obj.syncHealth = getSyncHealth(obj, statusSeq)
+    obj.syncLabel = getSyncLabel(obj, statusSeq)
     const diff = now - v.enterStamp
     const sec = diff / 1000
     const min = sec / 60
@@ -37,6 +41,30 @@ export const showParticipants = (participants: Participant[], myGuestId: string)
   })
 
   return list
+}
+
+function getSyncHealth(p: PageParticipant, statusSeq: number): PageParticipant["syncHealth"] {
+  if(p.clientState === "hidden") return "hidden"
+  if(p.clientState === "idle") return "idle"
+  if(p.clientState === "reconnecting") return "reconnecting"
+  const ack = p.lastPlayerAck
+  if(ack && ack.statusSeq === statusSeq && ack.applied === false) return "needs_resume"
+  if(statusSeq > 0 && (!ack || ack.statusSeq < statusSeq)) return "out_of_sync"
+  return "online"
+}
+
+function getSyncLabel(p: PageParticipant, statusSeq: number): string {
+  const ack = p.lastPlayerAck
+  if(p.clientState === "hidden") return "后台中"
+  if(p.clientState === "idle") return "离席中"
+  if(p.clientState === "reconnecting") return "重连中"
+  if(ack && ack.statusSeq === statusSeq && ack.applied === false) {
+    if(ack.blockedReason === "autoplay") return "需要点一下继续"
+    return "未应用同步"
+  }
+  if(statusSeq > 0 && (!ack || ack.statusSeq < statusSeq)) return "等待同步确认"
+  if(ack?.localContentStamp !== undefined) return "已同步"
+  return "在线"
 }
 
 

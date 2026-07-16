@@ -27,6 +27,18 @@ export interface Participant {
   clientState?: "visible" | "hidden" | "idle" | "reconnecting"
   lastActiveStamp?: number
   lastVisibleStamp?: number
+  lastPlayerAck?: PlayerAck
+  clientVersion?: string
+}
+
+export interface PlayerAck {
+  statusSeq: number
+  applied: boolean
+  playStatus?: "PLAYING" | "PAUSED"
+  localContentStamp?: number
+  blockedReason?: "autoplay" | "player_not_ready" | "permission" | "tab_hidden" | "unknown"
+  receivedAt?: number
+  appliedAt?: number
 }
 
 export interface ContentData {
@@ -63,6 +75,7 @@ export interface RoRes {
   operator: string
   contentStamp: number
   operateStamp: number
+  statusSeq: number
   participants: Participant[]
   guestId?: string
   iamOwner?: "Y" | "N"

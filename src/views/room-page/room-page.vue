@@ -37,18 +37,27 @@ const {
   sendTimer,
   sendTodo,
   sendStatus,
+  sendMode,
   getTimerRemainingMs,
+  toggleSyncDrawer,
+  copySyncDiagnostics,
 } = useRoomPage()
 const state = toRef(pageData, "state")
 
 // 一起听 / 一起学 tab
-const activeTab = ref<"listen" | "study">("listen")
+const activeTab = computed(() => pageData.activeMode)
 const myGuestId = computed(() => pageData.participants.find(p => p.isMe)?.guestId ?? "")
+const hasVersionMismatch = computed(() => {
+  const versions = pageData.participants.map(p => p.clientVersion).filter(Boolean)
+  return new Set(versions).size > 1
+})
+const syncIssueCount = computed(() => pageData.participants.filter(p => !p.isMe && p.syncHealth && p.syncHealth !== "online").length)
+const syncButtonText = computed(() => syncIssueCount.value ? `Sync ${syncIssueCount.value}` : "Sync")
 
 // 纯专注房间（无播客）进入后默认切到 Study Mode
-watch(() => pageData.state, (s) => {
-  if(s === 3 && !pageData.content) activeTab.value = "study"
-})
+const onTapRoomTab = (mode: "listen" | "study") => {
+  sendMode(mode)
+}
 
 const { t } = useLocale()
 
@@ -281,8 +290,8 @@ onUnmounted(() => {
 
       <!-- 一起听 / 一起学 切换 -->
       <div class="room-tabs">
-        <button class="room-tab" :class="{ 'room-tab_on': activeTab === 'listen' }" @click="activeTab = 'listen'">🎧 {{ t.tabListen }}</button>
-        <button class="room-tab" :class="{ 'room-tab_on': activeTab === 'study' }" @click="activeTab = 'study'">📚 {{ t.tabStudy }}</button>
+        <button class="room-tab" :class="{ 'room-tab_on': activeTab === 'listen' }" @click="onTapRoomTab('listen')">🎧 {{ t.tabListen }}</button>
+        <button class="room-tab" :class="{ 'room-tab_on': activeTab === 'study' }" @click="onTapRoomTab('study')">📚 {{ t.tabStudy }}</button>
       </div>
 
       <!-- Study Mode 面板 -->
@@ -314,6 +323,10 @@ onUnmounted(() => {
         <button @click="continuePlayback">{{ t.keepPlaying }}</button>
       </div>
 
+      <div v-if="hasVersionMismatch" class="version-banner">
+        <span>Someone is on an older version. Refresh if sync feels wrong.</span>
+      </div>
+
       <div class="focus-shell">
         <div class="focus-label">Focus Session</div>
         <div class="focus-timer">{{ focusMinutesLeft }}</div>
@@ -323,12 +336,32 @@ onUnmounted(() => {
       <div ref="playerEl" class="rp-player"></div>
 
       <div class="subtitle-tools">
+        <button class="cb-chip sync-chip" :class="{ 'sync-chip_warn': syncIssueCount }" @click="toggleSyncDrawer">
+          {{ syncButtonText }}
+        </button>
         <button class="cb-chip" :class="{ 'cb-on': subtitleEnabled }" @click="onTapToggleSubtitles">
           {{ subtitleEnabled ? t.subtitlesOn : t.subtitlesOff }}
         </button>
         <span v-if="subtitleEnabled && subtitleStatus === 'loading'">{{ t.subtitlesLoading }}</span>
         <span v-else-if="subtitleEnabled && subtitleStatus === 'empty'">{{ t.subtitlesEmpty }}</span>
         <span v-else-if="subtitleEnabled && subtitleStatus === 'untimed'">{{ t.subtitlesUntimed }}</span>
+      </div>
+
+      <div v-if="pageData.showSyncDrawer" class="sync-drawer">
+        <div class="sync-drawer-head">
+          <span>Sync diagnostics</span>
+          <button @click="copySyncDiagnostics">Copy</button>
+        </div>
+        <div class="sync-drawer-grid">
+          <div v-for="p in pageData.participants" :key="`sync-${p.guestId}`" class="sync-person">
+            <span>{{ p.nickName }}</span>
+            <strong :class="`sync-health_${p.syncHealth || 'online'}`">{{ p.syncLabel || 'Online' }}</strong>
+            <small>ack #{{ p.lastPlayerAck?.statusSeq ?? '-' }} · v{{ p.clientVersion || '-' }}</small>
+          </div>
+        </div>
+        <div class="sync-events">
+          <div v-for="(event, index) in pageData.syncEvents" :key="index">{{ event }}</div>
+        </div>
       </div>
 
       <div v-if="subtitleEnabled && subtitleStatus === 'ready'" class="subtitle-box" :aria-label="t.subtitles">
@@ -416,6 +449,7 @@ onUnmounted(() => {
             </div>
             <div class="rp-enter-time">
               <span>{{ item.enterStr }}{{ t.entered }}</span>
+              <strong :class="`sync-health_${item.syncHealth || 'online'}`">{{ item.syncLabel || 'Online' }}</strong>
             </div>
           </div>
         </template>
@@ -725,10 +759,13 @@ onUnmounted(() => {
     .rp-enter-time {
       flex: 1;
       display: flex;
+      flex-direction: column;
+      align-items: flex-end;
       justify-content: flex-end;
       text-align: right;
       font-size: var(--mini-font);
       color: var(--note-color);
+      gap: 6px;
     }
 
   }
@@ -930,7 +967,8 @@ onUnmounted(() => {
 <!-- 新功能样式：reaction / 暂停理由 / 工作栏 / 时间点笔记 -->
 <style scoped lang="scss">
 .resume-banner,
-.inactive-banner {
+.inactive-banner,
+.version-banner {
   width: 100%;
   box-sizing: border-box;
   display: flex;
@@ -966,6 +1004,12 @@ onUnmounted(() => {
 .inactive-banner button + button {
   background-color: var(--other-btn-bg);
   color: var(--other-btn-text);
+}
+
+.version-banner {
+  justify-content: flex-start;
+  border: 1px solid var(--line-color);
+  box-shadow: none;
 }
 
 .pomodoro-page {
@@ -1102,12 +1146,125 @@ onUnmounted(() => {
       background-color: var(--main-btn-bg);
       color: var(--main-btn-text);
     }
+
+    &.sync-chip {
+      font-weight: 700;
+    }
+
+    &.sync-chip_warn {
+      background-color: #2f6f6a;
+      color: #fff;
+    }
   }
 
   span {
     color: var(--note-color);
     font-size: var(--mini-font);
   }
+}
+
+.sync-drawer {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line-color);
+  background-color: var(--card-color);
+  color: var(--text-color);
+}
+
+.sync-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: var(--desc-font);
+  font-weight: 700;
+
+  button {
+    border: 0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    background-color: var(--other-btn-bg);
+    color: var(--other-btn-text);
+    cursor: pointer;
+  }
+}
+
+.sync-drawer-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.sync-person {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-color);
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  small {
+    grid-column: 1 / -1;
+    color: var(--note-color);
+    font-size: 12px;
+  }
+}
+
+.sync-events {
+  margin-top: 10px;
+  max-height: 150px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--note-color);
+}
+
+.sync-health_online,
+.sync-health_hidden,
+.sync-health_idle,
+.sync-health_reconnecting,
+.sync-health_needs_resume,
+.sync-health_out_of_sync {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  border-radius: 6px;
+  padding: 2px 8px;
+  box-sizing: border-box;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.sync-health_online {
+  background-color: color-mix(in srgb, #2f6f6a 16%, transparent);
+  color: #2f6f6a;
+}
+
+.sync-health_hidden,
+.sync-health_idle,
+.sync-health_reconnecting {
+  background-color: var(--tag-bg);
+  color: var(--tag-text);
+}
+
+.sync-health_needs_resume,
+.sync-health_out_of_sync {
+  background-color: color-mix(in srgb, #b85c38 18%, transparent);
+  color: #b85c38;
 }
 
 .subtitle-box {

@@ -2,6 +2,17 @@ import { ContentData } from "./index"
 
 export type PageState = 1 | 2 | 3 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20
 export type ClientState = "visible" | "hidden" | "idle" | "reconnecting"
+export type SyncHealth = "online" | "hidden" | "idle" | "reconnecting" | "needs_resume" | "out_of_sync"
+
+export interface PlayerAck {
+  statusSeq: number
+  applied: boolean
+  playStatus?: PlayStatus
+  localContentStamp?: number
+  blockedReason?: "autoplay" | "player_not_ready" | "permission" | "tab_hidden" | "unknown"
+  receivedAt?: number
+  appliedAt?: number
+}
 
 export interface PageParticipant {
   guestId: string
@@ -12,6 +23,10 @@ export interface PageParticipant {
   clientState?: ClientState
   lastActiveStamp?: number
   lastVisibleStamp?: number
+  lastPlayerAck?: PlayerAck
+  clientVersion?: string
+  syncHealth?: SyncHealth
+  syncLabel?: string
 }
 
 export interface Reaction {
@@ -78,7 +93,10 @@ export interface PageData {
   pauseNotice: string
   needsPlaybackResume: boolean
   inactiveListeners: PageParticipant[]
+  syncEvents: string[]
+  showSyncDrawer: boolean
   study?: StudyState
+  activeMode: "listen" | "study"
 }
 
 type SpeedRate = "0.8" | "1" | "1.2" | "1.5" | "1.7"
@@ -92,6 +110,7 @@ export interface RoomStatus {
   operator: string
   contentStamp: number
   operateStamp: number
+  statusSeq?: number
   everyoneCanOperatePlayer?: "Y" | "N"
   reason?: string
   content?: ContentData
@@ -105,13 +124,15 @@ export interface WsReaction {
 }
 
 export interface WsMsgRes {
-  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT" | "REACTION" | "NOTE" | "NOTES" | "NEW_CONTENT" | "STUDY_STATE"
+  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT" | "REACTION" | "NOTE" | "NOTES" | "NEW_CONTENT" | "STUDY_STATE" | "MODE" | "PLAYER_ACKS"
   roomStatus?: RoomStatus
   reaction?: WsReaction
   note?: RoomNote
   notes?: RoomNote[]
   content?: ContentData
   study?: StudyState
+  mode?: "listen" | "study"
+  participants?: PageParticipant[]
 }
 
 export type RevokeType = "ws" | "http" | "check"

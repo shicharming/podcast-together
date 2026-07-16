@@ -31,6 +31,16 @@ export type SpeedRate = "0.8" | "1" | "1.2" | "1.5" | "1.7"
 export type PlayStatus = "PLAYING" | "PAUSED"
 export type ClientState = "visible" | "hidden" | "idle" | "reconnecting"
 
+export interface PlayerAck {
+  statusSeq: number
+  applied: boolean
+  playStatus?: PlayStatus
+  localContentStamp?: number
+  blockedReason?: "autoplay" | "player_not_ready" | "permission" | "tab_hidden" | "unknown"
+  receivedAt?: number
+  appliedAt?: number
+}
+
 // ---- Study Mode (shared Pomodoro + todos + manual status) ----
 export type StudyStatus = "working" | "stuck" | "done" | "away" | "break"
 export type TimerPhase = "focus" | "short_break" | "long_break"
@@ -77,6 +87,8 @@ export interface Participant {
   clientState?: ClientState
   lastActiveStamp?: number
   lastVisibleStamp?: number
+  lastPlayerAck?: PlayerAck
+  clientVersion?: string
 }
 
 export interface ParticipantClient {
@@ -87,6 +99,8 @@ export interface ParticipantClient {
   clientState?: ClientState
   lastActiveStamp?: number
   lastVisibleStamp?: number
+  lastPlayerAck?: PlayerAck
+  clientVersion?: string
 }
 
 // Timestamp note (formerly "笔记"): a shared bookmark at a playback position + short text.
@@ -111,6 +125,7 @@ export interface Room {
   speedRate: SpeedRate
   contentStamp: number
   operateStamp: number
+  statusSeq: number
   operator: string
   pauseReason?: string
   createStamp: number
@@ -120,6 +135,7 @@ export interface Room {
   notes: Note[]
   config: RoomConfig
   study: StudyState
+  activeMode?: "listen" | "study"   // shared listen/study tab (everyone follows)
 }
 
 export interface RoRes {
@@ -130,6 +146,7 @@ export interface RoRes {
   operator: string
   contentStamp: number
   operateStamp: number
+  statusSeq: number
   participants: ParticipantClient[]
   guestId?: string
   iamOwner?: "Y" | "N"
