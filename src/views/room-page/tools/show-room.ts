@@ -24,6 +24,7 @@ export const showParticipants = (participants: Participant[], myGuestId: string,
       lastVisibleStamp: v.lastVisibleStamp,
       lastPlayerAck: v.lastPlayerAck,
       clientVersion: v.clientVersion,
+      listening: v.listening === true,
     }
     obj.syncHealth = getSyncHealth(obj, statusSeq)
     obj.syncLabel = getSyncLabel(obj, statusSeq)

@@ -89,6 +89,7 @@ export interface Participant {
   lastVisibleStamp?: number
   lastPlayerAck?: PlayerAck
   clientVersion?: string
+  listening?: boolean   // 是否加入收听（只有在听的人之间互相同步）
 }
 
 export interface ParticipantClient {
@@ -101,6 +102,7 @@ export interface ParticipantClient {
   lastVisibleStamp?: number
   lastPlayerAck?: PlayerAck
   clientVersion?: string
+  listening?: boolean   // 是否加入收听（只有在听的人之间互相同步）
 }
 
 // Timestamp note (formerly "笔记"): a shared bookmark at a playback position + short text.

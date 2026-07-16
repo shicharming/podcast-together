@@ -38,6 +38,9 @@ const {
   sendTodo,
   sendStatus,
   sendMode,
+  startListening,
+  stopListening,
+  getLiveContentMs,
   getTimerRemainingMs,
   toggleSyncDrawer,
   copySyncDiagnostics,
@@ -47,6 +50,13 @@ const state = toRef(pageData, "state")
 // 一起听 / 一起学 tab
 const activeTab = computed(() => pageData.activeMode)
 const myGuestId = computed(() => pageData.participants.find(p => p.isMe)?.guestId ?? "")
+
+// 收听状态相关：谁在听 + 实时进度（随 focusTick 每 500ms 刷新）
+const listeningNames = computed(() => pageData.participants.filter(p => p.listening).map(p => p.nickName).join("、"))
+const liveTimeStr = computed(() => {
+  focusTick.value
+  return formatTime(getLiveContentMs())
+})
 const hasVersionMismatch = computed(() => {
   const versions = pageData.participants.map(p => p.clientVersion).filter(Boolean)
   return new Set(versions).size > 1
@@ -311,13 +321,22 @@ onUnmounted(() => {
       <!-- 一起听（播客）视图 -->
       <div v-show="activeTab === 'listen'" class="listen-view">
 
+      <!-- 未加入收听：显示实时进度 + 加入按钮 -->
+      <div v-if="!pageData.isListening && pageData.content" class="join-listen-card">
+        <div class="jl-status">
+          <template v-if="listeningNames">🎧 {{ listeningNames }} {{ t.listeningLive }} · {{ liveTimeStr }}</template>
+          <template v-else>{{ t.nobodyListening }} · {{ t.joinPausedAt }} {{ liveTimeStr }}</template>
+        </div>
+        <pt-button :text="'🎧 ' + t.joinListening" @click="startListening"></pt-button>
+      </div>
+
       <!-- 播放器 -->
-      <div v-if="pageData.needsPlaybackResume" class="resume-banner">
+      <div v-if="pageData.isListening && pageData.needsPlaybackResume" class="resume-banner">
         <span>{{ t.resumePlaybackHint }}</span>
         <button @click="continuePlayback">{{ t.resumePlayback }}</button>
       </div>
 
-      <div v-if="pageData.inactiveListeners.length" class="inactive-banner">
+      <div v-if="pageData.isListening && pageData.inactiveListeners.length" class="inactive-banner">
         <span>{{ t.inactiveHint }}</span>
         <button @click="pauseForInactiveListeners">{{ t.pauseAndWait }}</button>
         <button @click="continuePlayback">{{ t.keepPlaying }}</button>
@@ -333,9 +352,10 @@ onUnmounted(() => {
         <div class="focus-sub">{{ pageData.inactiveListeners.length ? t.inactiveHint : t.sessionStatus }}</div>
       </div>
 
-      <div ref="playerEl" class="rp-player"></div>
+      <div ref="playerEl" class="rp-player" v-show="pageData.isListening"></div>
 
       <div class="subtitle-tools">
+        <button v-if="pageData.isListening" class="cb-chip" @click="stopListening">🔇 {{ t.leaveListening }}</button>
         <button class="cb-chip sync-chip" :class="{ 'sync-chip_warn': syncIssueCount }" @click="toggleSyncDrawer">
           {{ syncButtonText }}
         </button>
@@ -385,7 +405,7 @@ onUnmounted(() => {
           <button v-for="e in REACTIONS" :key="e" class="cb-chip cb-emoji" @click="sendReaction(e)">{{ e }}</button>
         </div>
 
-        <div class="cb-row cb-reason-row">
+        <div v-if="pageData.isListening" class="cb-row cb-reason-row">
           <button v-for="r in PAUSE_REASONS" :key="r" class="cb-chip" @click="onTapReason(r)">{{ r }}</button>
         </div>
 
@@ -445,6 +465,7 @@ onUnmounted(() => {
               @click="onTapEditMyName(item)"
             >
               <span>{{ item.nickName }}</span>
+              <span v-if="item.listening" class="rp-listening" title="listening">🎧</span>
               <div v-if="item.isMe" class="div-bg-img rp-nickName-icon"></div>
             </div>
             <div class="rp-enter-time">
@@ -552,6 +573,28 @@ onUnmounted(() => {
    listen content collapses to content width inside the centered flex column. */
 .listen-view {
   display: contents;
+}
+
+.join-listen-card {
+  width: 100%;
+  background-color: var(--card-color);
+  border-radius: 20px;
+  padding: 26px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+
+  .jl-status {
+    font-size: var(--desc-font);
+    color: var(--desc-color);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+}
+
+.rp-listening {
+  margin-left: 6px;
 }
 
 .room-tabs {

@@ -27,6 +27,7 @@ export interface PageParticipant {
   clientVersion?: string
   syncHealth?: SyncHealth
   syncLabel?: string
+  listening?: boolean
 }
 
 export interface Reaction {
@@ -97,6 +98,7 @@ export interface PageData {
   showSyncDrawer: boolean
   study?: StudyState
   activeMode: "listen" | "study"
+  isListening: boolean
 }
 
 type SpeedRate = "0.8" | "1" | "1.2" | "1.5" | "1.7"
@@ -124,7 +126,7 @@ export interface WsReaction {
 }
 
 export interface WsMsgRes {
-  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT" | "REACTION" | "NOTE" | "NOTES" | "NEW_CONTENT" | "STUDY_STATE" | "MODE" | "PLAYER_ACKS"
+  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT" | "REACTION" | "NOTE" | "NOTES" | "NEW_CONTENT" | "STUDY_STATE" | "MODE" | "LISTENING" | "PLAYER_ACKS"
   roomStatus?: RoomStatus
   reaction?: WsReaction
   note?: RoomNote

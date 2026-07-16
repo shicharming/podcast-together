@@ -28,6 +28,7 @@ export interface Participant {
   lastActiveStamp?: number
   lastVisibleStamp?: number
   lastPlayerAck?: PlayerAck
+  listening?: boolean
   clientVersion?: string
 }
 

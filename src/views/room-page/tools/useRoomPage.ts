@@ -53,6 +53,7 @@ const pageData: PageData = reactive({
   inactiveListeners: [],
   syncEvents: [],
   showSyncDrawer: false,
+  isListening: false,
 })
 
 // 新功能相关的杂项
@@ -150,6 +151,7 @@ const updateInactiveListeners = () => {
   const now = time.getLocalTime()
   pageData.inactiveListeners = pageData.participants.filter(v => {
     if(v.isMe) return false
+    if(v.listening !== true) return false   // 没在听的人本来就不需要跟上
     if(v.clientState === "hidden" || v.clientState === "idle" || v.clientState === "reconnecting") return true
     const lastVisible = v.lastVisibleStamp || v.lastActiveStamp || v.heartbeatStamp
     return playStatus === "PLAYING" && now - lastVisible > INACTIVE_WARN_MS
@@ -418,6 +420,67 @@ const sendStatus = (status: StudyStatus) => {
 }
 
 // 切换 listen/study tab（共享，所有人跟随最后切换的人）
+/*********** 收听状态：听 / 不听（只有在听的人之间互相同步） ***********/
+
+// 按服务端时间戳计算此刻的实时播放位置（ms）
+const getLiveContentMs = (): number => {
+  const st = latestStatus
+  if(!st) return 0
+  let ms = st.contentStamp
+  if(st.playStatus === "PLAYING") {
+    let rate = Number(st.speedRate)
+    if(isNaN(rate) || rate <= 0) rate = 1
+    ms += (time.getTime() - st.operateStamp) * rate
+  }
+  if(srcDuration > 0) ms = Math.min(ms, srcDuration * 1000)
+  return Math.max(0, ms)
+}
+
+// 加入收听：跳到实时进度并开始播（在点击手势内调用，天然满足浏览器自动播放策略）
+const startListening = () => {
+  if(!player) return
+  pageData.isListening = true
+  sendWs({
+    operateType: "SET_LISTENING",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    listening: true,
+  })
+  addSyncEvent("joined listening")
+  const st = latestStatus
+  if(!st) return
+  isRemoteSetSeek = true
+  player.seek(getLiveContentMs() / 1000)
+  if(st.playStatus === "PLAYING") {
+    isRemoteSetPlaying = true
+    try {
+      const r = player.play()
+      r?.catch?.(() => { pageData.needsPlaybackResume = true })
+    } catch {
+      pageData.needsPlaybackResume = true
+    }
+  }
+}
+
+// 退出收听：本地静默暂停（不广播、不影响别人）；若我是最后一个在听的人，服务器会把共享进度停在当前位置
+const stopListening = () => {
+  pageData.isListening = false
+  pageData.needsPlaybackResume = false
+  if(player && playStatus === "PLAYING") {
+    isRemoteSetPaused = true
+    try { player.pause() } catch {}
+  }
+  sendWs({
+    operateType: "SET_LISTENING",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    listening: false,
+  })
+  addSyncEvent("left listening")
+}
+
 const sendMode = (mode: "listen" | "study") => {
   pageData.activeMode = mode   // 本地即时切换
   sendWs({
@@ -466,6 +529,9 @@ export const useRoomPage = () => {
     sendStatus,
     sendMode,
     getTimerRemainingMs,
+    startListening,
+    stopListening,
+    getLiveContentMs,
     toggleSyncDrawer,
     copySyncDiagnostics,
   }
@@ -496,6 +562,7 @@ export async function enterRoom() {
   let roomId: string = route.params.roomId as string
   pageData.roomId = roomId
   pageData.state = 1
+  pageData.isListening = false   // 进房间默认不听，点“加入收听”才开始
   pausedSec = 0
 
   let userData = ptUtil.getUserData()
@@ -747,6 +814,7 @@ function collectLatestStatus() {
 
   const _collect = () => {
     if(!player) return
+    if(!pageData.isListening) return
     if(!pageData.amIOwner && pageData.everyoneCanOperatePlayer === "N") return
 
     const currentTime = player.currentTime ?? 0
@@ -982,6 +1050,16 @@ function connectWebSocket() {
       addSyncEvent("ws connected")
       firstSend()
       flushPendingWs()
+      // 重连后重新声明自己的收听状态（服务器可能在掉线期间把我们剔除过）
+      if(pageData.isListening) {
+        sendToWebSocket(ws, {
+          operateType: "SET_LISTENING",
+          roomId: pageData.roomId,
+          "x-pt-local-id": localId,
+          "x-pt-stamp": time.getTime(),
+          listening: true,
+        })
+      }
     }
     else if(rT === "NEW_STATUS" && roomStatus) {
       // console.log("web-socket 收到新的的状态.......")
@@ -1030,6 +1108,9 @@ function connectWebSocket() {
     }
     else if(rT === "MODE" && msgRes.mode) {
       pageData.activeMode = msgRes.mode
+    }
+    else if(rT === "LISTENING" && msgRes.participants) {
+      updateParticipantsFromServer(msgRes.participants, latestStatus?.statusSeq ?? 0)
     }
   }
 
@@ -1086,6 +1167,9 @@ function firstSend() {
 async function receiveNewStatus(fromType: RevokeType = "ws") {
   if(latestStatus.roomId !== pageData.roomId) return
   updateInactiveListeners()
+
+  // 没在收听：只记录状态（latestStatus 已更新），不动本地播放器
+  if(!pageData.isListening) return
 
   await waitPlayer
   if(!player) {

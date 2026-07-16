@@ -225,7 +225,8 @@ export class RoomDO {
     } else {
       if (participants.length >= MAX_ROOM_NUM) return { code: "R0001" }
       guestId = this.generateGuestId(participants)
-      me = { nickName, enterStamp: now, heartbeatStamp: now, userAgent: ua, guestId, nonce: clientId }
+      // 新成员默认“不听”，点了“加入收听”才进入同步（同时天然满足浏览器自动播放策略）
+      me = { nickName, enterStamp: now, heartbeatStamp: now, userAgent: ua, guestId, nonce: clientId, listening: false }
       me.clientVersion = this.normalizeClientVersion(body["x-pt-version"])
       this.touchParticipantState(me, clientState, now)
       participants.push(me)
@@ -304,6 +305,7 @@ export class RoomDO {
       lastVisibleStamp: v.lastVisibleStamp,
       lastPlayerAck: v.lastPlayerAck,
       clientVersion: v.clientVersion,
+      listening: v.listening === true,
     }))
     return {
       roomId: room.roomId,
@@ -402,6 +404,7 @@ export class RoomDO {
     if (op === "TODO_OP") return this.wsTodoOp(ws, req)
     if (op === "SET_STATUS") return this.wsSetStatus(ws, req)
     if (op === "SET_MODE") return this.wsSetMode(ws, req)
+    if (op === "SET_LISTENING") return this.wsSetListening(ws, req)
   }
 
   async webSocketClose(ws: WebSocket) {
@@ -481,6 +484,10 @@ export class RoomDO {
 
     const guestId = this.operatorGuestId(clientId)
     if (!guestId) { try { ws.close() } catch {}; return }
+
+    // 只有“在听”的人能控制共享播放
+    const mePlayer = room.participants.find((v) => v.guestId === guestId)
+    if (mePlayer?.listening !== true) return
 
     const s1 = req["x-pt-stamp"] as number
     if (guestId === room.operator && s1 - room.operateStamp < MIN_DURATION_FOR_A_PERSON) return
@@ -768,6 +775,50 @@ export class RoomDO {
     this.broadcastStudy(room)
   }
 
+  // 加入/退出收听：只有在听的人之间互相同步；最后一个在听的人退出时，共享进度自动暂停。
+  private async wsSetListening(ws: WebSocket, req: any) {
+    const room = this.room
+    if (!room) return
+    const clientId = req["x-pt-local-id"]
+    const me = room.participants.find((v) => v.nonce === clientId)
+    if (!me) { try { ws.close() } catch {}; return }
+
+    me.listening = req.listening === true
+    me.heartbeatStamp = Date.now()
+
+    let pausedNow = false
+    if (!me.listening && room.playStatus === "PLAYING") {
+      const stillListening = room.participants.some((v) => v.listening === true)
+      if (!stillListening) {
+        // heartbeatStamp 刚刷新过，pausePlayer 会把位置精确停在“现在”
+        this.pausePlayer(room, me.guestId)
+        pausedNow = true
+      }
+    }
+
+    await this.save()
+    const participants = this.buildRoRes(room).participants
+    if (pausedNow) {
+      this.broadcast({
+        responseType: "NEW_STATUS",
+        roomStatus: {
+          roomId: room.roomId,
+          playStatus: room.playStatus,
+          speedRate: room.speedRate,
+          operator: room.operator,
+          contentStamp: room.contentStamp,
+          operateStamp: room.operateStamp,
+          statusSeq: room.statusSeq ?? 0,
+          everyoneCanOperatePlayer: room.config.everyoneCanOperatePlayer,
+          reason: room.pauseReason,
+        },
+        participants,
+      })
+    } else {
+      this.broadcast({ responseType: "LISTENING", participants })
+    }
+  }
+
   // Shared listen/study tab — open control, everyone follows the last switcher.
   private async wsSetMode(ws: WebSocket, req: any) {
     const room = this.room
@@ -803,8 +854,9 @@ export class RoomDO {
     room.participants = room.participants.filter((v) => now - v.heartbeatStamp < KICK_MS)
     const after = room.participants.length
 
-    // Everyone left while playing → auto-pause at last-known position.
-    if (after === 0 && room.playStatus === "PLAYING") {
+    // 没人了、或者剩下的人都不在听（比如最后一个在听的人掉线被剔除）→ 自动暂停
+    const anyListening = room.participants.some((v) => v.listening === true)
+    if ((after === 0 || !anyListening) && room.playStatus === "PLAYING") {
       this.pausePlayer(room)
       await this.save()
       this.broadcast({

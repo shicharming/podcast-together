@@ -91,6 +91,11 @@ export const useLocale = () => {
     createFocusRoom: isJa ? "集中ルームを作る（音声なし）" : isZh ? "创建专注房间（无需播客）" : "Start a focus room (no podcast)",
     tabListen: isJa ? "一緒に聴く" : isZh ? "一起听" : "Listen",
     tabStudy: isJa ? "一緒に集中" : isZh ? "一起学" : "Study",
+    joinListening: isJa ? "収聴に参加" : isZh ? "加入收听" : "Join listening",
+    leaveListening: isJa ? "収聴をやめる" : isZh ? "退出收听" : "Stop listening",
+    nobodyListening: isJa ? "まだ誰も聴いていません" : isZh ? "还没有人在听" : "No one is listening yet",
+    joinPausedAt: isJa ? "一時停止位置" : isZh ? "暂停在" : "Paused at",
+    listeningLive: isJa ? "が聴いています" : isZh ? "正在听" : "listening now",
     // ---- Study Mode (Pomodoro + todos + status) ----
     phaseFocus: isJa ? "集中" : isZh ? "专注" : "Focus",
     phaseShortBreak: isJa ? "小休憩" : isZh ? "短休息" : "Short break",
