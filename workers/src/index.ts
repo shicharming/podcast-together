@@ -23,6 +23,9 @@ function json(data: unknown, status = 200): Response {
   })
 }
 
+// 常驻房间的固定房号（/room/<id> 直接访问，自动创建、永不过期）
+const PERMANENT_ROOMS = new Set(["sunny"])
+
 // roomId: short, url-safe, no ambiguous chars.
 function genRoomId(): string {
   const ABC = "abcdefghijkmnopqrstuvwxyz23456789"
@@ -76,6 +79,9 @@ export default {
       let roomId: string = body.roomId
       if (op === "CREATE") roomId = genRoomId()
       if (!roomId) return json({ code: "E4000" })
+
+      // 常驻房间：固定房号，进入时自动创建、永不过期
+      body.permanentRoom = PERMANENT_ROOMS.has(roomId)
 
       // Capture UA for participant records.
       body.userAgent = req.headers.get("user-agent") ?? undefined

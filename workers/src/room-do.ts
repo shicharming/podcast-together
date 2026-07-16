@@ -205,12 +205,41 @@ export class RoomDO {
     const ua = body.userAgent
     const clientState = this.normalizeClientState(body.clientState)
 
+    // 常驻房间：不存在就为第一位进入者自动创建
+    if (!this.room && body.permanentRoom === true) {
+      const now0 = Date.now()
+      this.room = {
+        roomId,
+        content: undefined,
+        oState: "OK",
+        playStatus: "PAUSED",
+        speedRate: "1",
+        contentStamp: 0,
+        operateStamp: now0,
+        statusSeq: 0,
+        operator: "",
+        createStamp: now0,
+        expiresAt: now0 + ROOM_TTL_MS,
+        owner: clientId,
+        participants: [],
+        notes: [],
+        config: { ...defaultRoomCfg },
+        study: defaultStudy(),
+        activeMode: "listen",
+        pinned: true,
+      }
+      await this.save()
+      await this.scheduleAlarm()
+    }
+
     const room = this.room
     if (!room || room.roomId !== roomId) return { code: "E4004" }
     if (room.oState === "EXPIRED") return { code: "E4006" }
     if (room.oState === "DELETED") return { code: "E4004" }
 
     const now = Date.now()
+    // 滚动续期：活跃的房间不会中途过期（TTL = 闲置时长）
+    room.expiresAt = now + ROOM_TTL_MS
     let participants = room.participants ?? []
     let guestId = ""
     let me = participants.find((v) => v.nonce === clientId)
@@ -258,6 +287,7 @@ export class RoomDO {
     let participants = room.participants ?? []
     const me = participants.find((v) => v.nonce === clientId)
     if (!me) return { code: "E4003" }
+    room.expiresAt = now + ROOM_TTL_MS   // 滚动续期
     me.heartbeatStamp = now
     me.nickName = nickName
     me.clientVersion = this.normalizeClientVersion(body["x-pt-version"])
@@ -843,11 +873,16 @@ export class RoomDO {
     if (!room) return
     const now = Date.now()
 
-    // Room expired → tear down.
+    // Room expired → tear down. 常驻房间（pinned）永不销毁，只续期。
     if (now > room.expiresAt || room.oState !== "OK") {
-      this.room = null
-      await this.ctx.storage.deleteAll()
-      return
+      if (room.pinned) {
+        room.expiresAt = now + ROOM_TTL_MS
+        await this.save()
+      } else {
+        this.room = null
+        await this.ctx.storage.deleteAll()
+        return
+      }
     }
 
     const before = room.participants.length

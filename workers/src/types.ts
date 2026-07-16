@@ -138,6 +138,7 @@ export interface Room {
   config: RoomConfig
   study: StudyState
   activeMode?: "listen" | "study"   // shared listen/study tab (everyone follows)
+  pinned?: boolean                  // 常驻房间：永不过期，进入时自动创建
 }
 
 export interface RoRes {

@@ -352,7 +352,8 @@ onUnmounted(() => {
         <div class="focus-sub">{{ pageData.inactiveListeners.length ? t.inactiveHint : t.sessionStatus }}</div>
       </div>
 
-      <div ref="playerEl" class="rp-player" v-show="pageData.isListening"></div>
+      <!-- 不能用 display:none 藏播放器：shikwasa 在隐藏容器里初始化会量出 0 宽度导致显示错乱 -->
+      <div ref="playerEl" class="rp-player" :class="{ 'rp-player_hidden': !pageData.isListening }"></div>
 
       <div class="subtitle-tools">
         <button v-if="pageData.isListening" class="cb-chip" @click="stopListening">🔇 {{ t.leaveListening }}</button>
@@ -573,6 +574,17 @@ onUnmounted(() => {
    listen content collapses to content width inside the centered flex column. */
 .listen-view {
   display: contents;
+}
+
+/* 未加入收听时隐藏播放器，但保留宽度（height:0 而非 display:none），
+   这样 shikwasa 初始化时能量到正确宽度，加入后显示正常 */
+.rp-player_hidden {
+  height: 0 !important;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .join-listen-card {
