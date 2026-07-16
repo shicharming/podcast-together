@@ -269,7 +269,8 @@ export class RoomDO {
     const roRes: RoRes = {
       ...this.buildRoRes(room),
       guestId,
-      iamOwner: room.owner === clientId ? "Y" : "N",
+      // 常驻房间人人平等，都视为房主
+      iamOwner: room.owner === clientId || room.pinned === true ? "Y" : "N",
     }
     return { code: "0000", data: roRes }
   }
@@ -509,7 +510,7 @@ export class RoomDO {
     const room = this.room
     if (!room) return
     const clientId = req["x-pt-local-id"]
-    const isOwner = room.owner === clientId
+    const isOwner = room.owner === clientId || room.pinned === true
     if (!isOwner && room.config.everyoneCanOperatePlayer === "N") return
 
     const guestId = this.operatorGuestId(clientId)
