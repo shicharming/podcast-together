@@ -39,9 +39,10 @@ jobs:
 
       - run: pnpm build
 
+      # wrangler-action@v3 can't find wrangler in a pnpm workspace
+      # (ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL), so run wrangler via npx directly.
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=podcast-together --branch=main
+        run: npx wrangler@4 pages deploy dist --project-name=podcast-together --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

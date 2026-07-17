@@ -104,7 +104,10 @@ async function fetchLink(link: string): Promise<string> {
       signal: controller.signal,
       redirect: "follow",
     })
-    if (!res.ok) return ""
+    if (!res.ok) {
+      console.log(`fetchLink ${res.status} ${link}`)
+      return ""
+    }
     const html = await res.text()
     const lower = html.toLowerCase()
     if (!lower.includes("head") || !lower.includes("meta")) return ""
@@ -320,7 +323,10 @@ async function fetchText(url: string, accept: string): Promise<string> {
       redirect: "follow",
       signal: controller.signal,
     })
-    if (!res.ok) return ""
+    if (!res.ok) {
+      console.log(`fetchText ${res.status} ${url}`)
+      return ""
+    }
     const len = Number(res.headers.get("content-length") || "0")
     if (len > 2_000_000) return ""
     return await res.text()
