@@ -20,6 +20,22 @@ export async function handleParse(body: Record<string, any>): Promise<ResType<Co
     return { code: "0000", data: { infoType: "podcast", audioUrl: link } }
   }
 
+  // Apple Podcasts pages no longer embed a scrapeable audio URL in their
+  // server-rendered HTML (Apple reworked the web player around the Feb/Mar
+  // 2026 Podcasts redesign), so regex-scraping the page for a bare .mp3/.m4a
+  // link — which used to work — now reliably misses. Apple's public iTunes
+  // Lookup API still exposes the real enclosure URL per episode, so we hit
+  // that first for podcasts.apple.com links and only fall back to HTML
+  // scraping (still useful for non-Apple links, or if Apple ever changes
+  // the Lookup API) when it doesn't resolve.
+  if (link.includes("podcasts.apple.com")) {
+    const appleData = await getAppleEpisodeViaLookup(link)
+    if (appleData) {
+      appleData.transcripts = await discoverTranscripts(appleData, "", link)
+      return { code: "0000", data: appleData }
+    }
+  }
+
   const html = await fetchLink(link)
   if (!html) return { code: "E4004" }
   const parsed = parseHtml(html, link)
@@ -27,6 +43,46 @@ export async function handleParse(body: Record<string, any>): Promise<ResType<Co
     parsed.data.transcripts = await discoverTranscripts(parsed.data, html, link)
   }
   return parsed
+}
+
+// Resolve an Apple Podcasts link (show + optional ?i=<episodeId>) straight
+// through Apple's iTunes Lookup API instead of scraping podcasts.apple.com.
+// Returns null when there's no episode id to resolve, or when the episode
+// isn't among the show's most recent 200 entries — callers should fall back
+// to HTML scraping in that case.
+async function getAppleEpisodeViaLookup(link: string): Promise<ContentData | null> {
+  const collectionId = link.match(/\/id(\d+)/)?.[1]
+  const episodeId = link.match(/[?&]i=(\d+)/)?.[1]
+  if (!collectionId || !episodeId) return null
+
+  const body = await fetchText(
+    `https://itunes.apple.com/lookup?id=${collectionId}&entity=podcastEpisode&limit=200`,
+    "application/json",
+  )
+  if (!body) return null
+
+  let results: any[] = []
+  try {
+    results = JSON.parse(body)?.results ?? []
+  } catch {
+    return null
+  }
+
+  const show = results.find((r) => r?.wrapperType === "track")
+  const episode = results.find((r) => String(r?.trackId ?? "") === episodeId)
+  if (!episode?.episodeUrl) return null
+
+  return {
+    infoType: "podcast",
+    audioUrl: episode.episodeUrl,
+    title: episode.trackName ?? "",
+    description: episode.description ?? episode.shortDescription ?? "",
+    imageUrl: episode.artworkUrl600 ?? show?.artworkUrl600 ?? "",
+    linkUrl: link,
+    sourceType: "apple_podcast",
+    seriesName: show?.collectionName ?? episode.collectionName ?? "",
+    seriesUrl: show?.collectionViewUrl ?? "",
+  }
 }
 
 function judgeIsCdnLink(link: string): boolean {
