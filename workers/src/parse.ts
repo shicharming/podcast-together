@@ -194,7 +194,8 @@ async function fetchDirect(link: string): Promise<string> {
 // side-stepping origin blocks on Cloudflare egress IPs.
 async function fetchViaReader(link: string): Promise<string> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 12000)
+  // Jina's first (uncached) render of a page can take a while; give it room.
+  const timer = setTimeout(() => controller.abort(), 20000)
   try {
     const headers: Record<string, string> = {
       "User-Agent": UA,
