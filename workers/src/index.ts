@@ -67,7 +67,7 @@ export default {
     }
 
     if (path.endsWith("/parse-text")) {
-      return json(await handleParse(body))
+      return json(await handleParse(body, env))
     }
 
     if (path.endsWith("/parse-transcript")) {

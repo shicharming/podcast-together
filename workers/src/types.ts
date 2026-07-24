@@ -3,7 +3,9 @@
 
 export interface ContentData {
   infoType: "podcast"
+  mediaType?: "audio" | "youtube"
   audioUrl: string
+  videoId?: string
   sourceType?: string
   title?: string
   description?: string
@@ -167,4 +169,5 @@ export interface ResType<T = RoRes> {
 
 export interface Env {
   ROOM: DurableObjectNamespace
+  JINA_KEY?: string   // optional Jina Reader API key (raises rate limits for blocked-origin fallback)
 }

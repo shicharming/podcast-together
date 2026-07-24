@@ -2,22 +2,28 @@
 // on Cloudflare Workers. Uses regex + OpenGraph meta extraction (no cheerio),
 // which covers the MVP link types: xiaoyuzhou, Apple Podcasts regional links, direct mp3/m4a.
 
-import type { ContentData, ResType, TranscriptRef } from "./types"
+import type { ContentData, ResType, TranscriptRef, Env } from "./types"
 
 const MAX_FETCH_MILLI = 8000
 const WX_AUDIO_URL = "https://res.wx.qq.com/voice/getvoice?mediaid="
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36"
 
-export async function handleParse(body: Record<string, any>): Promise<ResType<ContentData>> {
+// Set per request from env; used by the reader-proxy fallback for blocked origins.
+let readerKey = ""
+
+export async function handleParse(body: Record<string, any>, env?: Env): Promise<ResType<ContentData>> {
+  readerKey = env?.JINA_KEY ?? ""
   const link: string = body?.link
   const clientId: string = body?.["x-pt-local-id"]
   if (!link || !clientId) return { code: "E4000" }
   if (link.indexOf("http") !== 0) return { code: "E4000" }
+  const youtube = parseYoutubeLink(link)
+  if (youtube) return { code: "0000", data: youtube }
 
   // Direct CDN audio link — no fetch needed.
   if (judgeIsCdnLink(link)) {
-    return { code: "0000", data: { infoType: "podcast", audioUrl: link } }
+    return { code: "0000", data: { infoType: "podcast", mediaType: "audio", audioUrl: link } }
   }
 
   // Apple Podcasts pages no longer embed a scrapeable audio URL in their
@@ -74,6 +80,7 @@ async function getAppleEpisodeViaLookup(link: string): Promise<ContentData | nul
 
   return {
     infoType: "podcast",
+    mediaType: "audio",
     audioUrl: episode.episodeUrl,
     title: episode.trackName ?? "",
     description: episode.description ?? episode.shortDescription ?? "",
@@ -90,7 +97,64 @@ function judgeIsCdnLink(link: string): boolean {
   return reg.test(link)
 }
 
+function parseYoutubeLink(link: string): ContentData | null {
+  let url: URL
+  try {
+    url = new URL(link)
+  } catch {
+    return null
+  }
+
+  const host = url.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "")
+  let videoId = ""
+  if (host === "youtu.be") {
+    videoId = url.pathname.split("/").filter(Boolean)[0] ?? ""
+  } else if (host.endsWith("youtube.com") || host.endsWith("youtube-nocookie.com")) {
+    if (url.pathname === "/watch") videoId = url.searchParams.get("v") ?? ""
+    else {
+      const parts = url.pathname.split("/").filter(Boolean)
+      const key = parts[0]
+      if (key === "shorts" || key === "embed" || key === "live") videoId = parts[1] ?? ""
+    }
+  }
+  if (!videoId) {
+    videoId = link.match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([a-zA-Z0-9_-]{6,32})/)?.[1] ?? ""
+  }
+
+  videoId = videoId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32)
+  if (!/^[a-zA-Z0-9_-]{6,}$/.test(videoId)) return null
+
+  return {
+    infoType: "podcast",
+    mediaType: "youtube",
+    sourceType: "youtube",
+    audioUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    videoId,
+    title: "YouTube",
+    description: "Synchronized YouTube watch room",
+    imageUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    linkUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    seriesName: "YouTube",
+    seriesUrl: "https://www.youtube.com/",
+  }
+}
+
 async function fetchLink(link: string): Promise<string> {
+  // Try a direct fetch first. Some origins (xiaoyuzhou started ~Jul 2026) return
+  // 403 to Cloudflare's egress IPs, so on failure retry through a reader proxy
+  // that fetches the page from a different network and returns the raw HTML.
+  const direct = await fetchDirect(link)
+  if (direct) return direct
+  return await fetchViaReader(link)
+}
+
+function looksLikeHtml(html: string): boolean {
+  if (!html) return false
+  const lower = html.toLowerCase()
+  return lower.includes("head") && lower.includes("meta")
+}
+
+async function fetchDirect(link: string): Promise<string> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), MAX_FETCH_MILLI)
   try {
@@ -98,20 +162,60 @@ async function fetchLink(link: string): Promise<string> {
       method: "GET",
       headers: {
         "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Referer": "https://www.xiaoyuzhoufm.com/",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
       },
       signal: controller.signal,
       redirect: "follow",
     })
     if (!res.ok) {
-      console.log(`fetchLink ${res.status} ${link}`)
+      console.log(`fetchDirect ${res.status} ${link}`)
       return ""
     }
     const html = await res.text()
-    const lower = html.toLowerCase()
-    if (!lower.includes("head") || !lower.includes("meta")) return ""
-    return html
+    return looksLikeHtml(html) ? html : ""
+  } catch {
+    return ""
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// r.jina.ai fetches the target from its own network and returns the raw HTML,
+// side-stepping origin blocks on Cloudflare egress IPs.
+async function fetchViaReader(link: string): Promise<string> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 12000)
+  try {
+    const headers: Record<string, string> = {
+      "User-Agent": UA,
+      "X-Return-Format": "html",
+      "Accept": "text/html,*/*;q=0.8",
+    }
+    // A free Jina key lifts the anonymous per-IP rate limit (Cloudflare's shared
+    // egress IP otherwise gets 429 on the keyless tier).
+    if (readerKey) headers["Authorization"] = `Bearer ${readerKey}`
+    const res = await fetch(`https://r.jina.ai/${link}`, {
+      method: "GET",
+      headers,
+      signal: controller.signal,
+      redirect: "follow",
+    })
+    if (!res.ok) {
+      console.log(`fetchViaReader ${res.status} ${link}`)
+      return ""
+    }
+    const html = await res.text()
+    return looksLikeHtml(html) ? html : ""
   } catch {
     return ""
   } finally {
@@ -236,6 +340,7 @@ function parseHtml(html: string, originLink: string): ResType<ContentData> {
     code: "0000",
     data: {
       infoType: "podcast",
+      mediaType: "audio",
       title: decodeEntities(title),
       audioUrl,
       description: decodeEntities(description),
