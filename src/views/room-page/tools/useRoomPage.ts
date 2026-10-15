@@ -16,6 +16,7 @@ import { initWebSocket, sendToWebSocket } from "./init-websocket"
 import { shareData } from "./init-share"
 import { request_enter, request_heartbeat, request_leave } from "./room-request"
 import { request_parse } from "../../create-page/cp-request"
+import { createIntentGate } from "./user-intent"
 
 // 一些常量
 const COLLECT_TIMEOUT = 300    // 收集最新状态的最小间隔
@@ -96,6 +97,9 @@ let isRemoteSetPlaying = false
 let isRemoteSetPaused = false
 let isRemoteSetSpeedRate = false
 
+// 只把“人”的操作广播出去（见 user-intent.ts）
+const { mark: markUserIntent, take: takeUserIntent } = createIntentGate()
+
 // 播放器准备好的回调
 type SimpleFunc = (param1: boolean) => void
 let playerAlready: SimpleFunc
@@ -165,6 +169,9 @@ const pauseForInactiveListeners = () => {
 const continuePlayback = async () => {
   if(!player) return
   pageData.needsPlaybackResume = false
+  // 被系统暂停过的话本地进度已落后：先跳到房间实时位置，再静默续播（不广播）
+  isRemoteSetSeek = true
+  player.seek(getLiveContentMs() / 1000)
   try {
     const result = player.play()
     if(result?.catch) await result
@@ -290,6 +297,7 @@ function mergeNote(note: PageData["notes"][number]) {
 const seekToNote = (positionMs: number) => {
   if(!player) return
   isRemoteSetSeek = false
+  markUserIntent()
   player.seek(positionMs / 1000)
 }
 
@@ -355,6 +363,7 @@ const pauseWithReason = (reason: string) => {
   if(!player) return
   if(playStatus === "PLAYING") {
     // 触发 player 的 pause 回调，进而带理由上报
+    markUserIntent()
     player.pause()
   } else {
     // 已经是暂停态，直接上报一次带理由的状态
@@ -668,6 +677,12 @@ function createPlayer() {
       isRemoteSetPaused = false
       return
     }
+    if(!takeUserIntent()) {
+      // 系统暂停（锁屏/来电/切 App）：只停自己，房间继续；提示用户点一下跟上
+      if(pageData.isListening && latestStatus?.playStatus === "PLAYING") pageData.needsPlaybackResume = true
+      addSyncEvent("system pause, not broadcast")
+      return
+    }
     collectLatestStatus()
   }
   const playing = (e: Event) => {
@@ -678,6 +693,7 @@ function createPlayer() {
       isRemoteSetPlaying = false
       return
     }
+    if(!takeUserIntent()) return   // 缓冲恢复 / 纠偏后的 playing，不是人按的
     collectLatestStatus()
   }
   const ratechange = (e: Event) => {
@@ -685,6 +701,7 @@ function createPlayer() {
       isRemoteSetSpeedRate = false
       return
     }
+    if(!takeUserIntent()) return
     collectLatestStatus()
   }
   const seeked = (e: Event) => {
@@ -692,6 +709,7 @@ function createPlayer() {
       isRemoteSetSeek = false
       return
     }
+    if(!takeUserIntent()) return
     collectLatestStatus()
   }
   const callbacks = {
@@ -705,17 +723,29 @@ function createPlayer() {
   }
 
   const onBeforeClick = (target: string): boolean => {
-    if(pageData.amIOwner || !target) return true
     const list = ["play_or_pause", "forward", "backward", "speed", "seek"]
     const isRestricted = list.includes(target)
-    if(pageData.everyoneCanOperatePlayer === "N" && isRestricted) {
+    if(!pageData.amIOwner && pageData.everyoneCanOperatePlayer === "N" && isRestricted) {
       showOperateFailed()
       return false
     }
+    if(isRestricted) markUserIntent()
     return true
   }
 
   player = initPlayer(playerEl, audio, callbacks, onBeforeClick)
+
+  // 锁屏界面 / 耳机按键也算人的操作：覆盖 shikwasa 默认的 mediaSession 处理，先过权限并记意图
+  if("mediaSession" in navigator) {
+    const p = player
+    const ms = navigator.mediaSession
+    const guard = (target: string, fn: () => void) => () => { if(onBeforeClick(target)) fn() }
+    ms.setActionHandler("play", guard("play_or_pause", () => p.play()))
+    ms.setActionHandler("pause", guard("play_or_pause", () => p.pause()))
+    ms.setActionHandler("seekforward", guard("forward", () => p.seekBySpan()))
+    ms.setActionHandler("seekbackward", guard("backward", () => p.seekBySpan({ forward: false })))
+    ms.setActionHandler("seekto", (d) => { if(d.seekTime != null && onBeforeClick("seek")) p.seek(d.seekTime) })
+  }
   checkPlayerReady()
 }
 
